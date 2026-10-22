@@ -41,7 +41,7 @@ panic.log
 
 # 4. Flutter / Dart (desktop & future UI)
 **/.dart_tool/
-**/build/
+/future/ui/build/
 **/flutter_ephemeral/
 **/.flutter-plugins
 **/.flutter-plugins-dependencies
