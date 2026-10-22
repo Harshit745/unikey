@@ -12,6 +12,7 @@
 # Produces:
 #   release\UniKey\                      portable application folder
 #   release\UniKey-v<ver>-<OS>.zip       distributable archive
+#   release\UniKey-Setup.exe             NSIS installer (with -UI)
 #
 # Fails gracefully with a readable message when cargo, git, assets, or the
 # config are missing, when the build fails, or on permission problems.
@@ -101,11 +102,15 @@ if ($UI) {
         Push-Location (Join-Path $RepoRoot "apps\desktop")
         try {
             & npm ci
-            if ($LASTEXITCODE -eq 0) { & npx tauri build }
+            if ($LASTEXITCODE -eq 0) { & npx tauri build --bundles nsis }
             $bundleDir = Join-Path $RepoRoot "apps\desktop\src-tauri\target\release\bundle"
             if ($LASTEXITCODE -eq 0 -and (Test-Path $bundleDir)) {
                 Copy-Item -Recurse -Force $bundleDir (Join-Path $ReleaseDir "UI")
+                $Installer = Get-ChildItem -Path $bundleDir -Recurse -Filter "*-setup.exe" | Select-Object -First 1
+                if (-not $Installer) { Write-Fail "Tauri succeeded but no NSIS setup executable was found." }
+                Copy-Item -Force $Installer.FullName (Join-Path $ReleaseRoot "UniKey-Setup.exe")
                 Write-Info "  - UI bundle copied"
+                Write-Info "  - installer: release\UniKey-Setup.exe"
             } else {
                 Write-Warn "UI build failed; continuing without the UI bundle."
             }

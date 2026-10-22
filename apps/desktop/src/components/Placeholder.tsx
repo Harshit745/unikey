@@ -11,7 +11,7 @@ interface Props {
  * data. Rendered inside a glass card.
  */
 export const Placeholder: React.FC<Props> = ({ icon, title, description }) => (
-  <div className="rounded-3xl border border-white/60 bg-white/55 px-6 py-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_24px_60px_-16px_rgba(31,34,55,0.28)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#1b1b1e]/55 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_60px_-16px_rgba(0,0,0,0.6)]">
+  <div className="surface-card px-6 py-12 text-center">
   <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-[13px] bg-black/[0.04] text-[22px] leading-none dark:bg-white/[0.06]">
     {icon}
   </div>

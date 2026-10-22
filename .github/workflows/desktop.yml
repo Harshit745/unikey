@@ -1,6 +1,7 @@
 name: UniKey Desktop
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     tags: ['v*']
@@ -42,6 +43,10 @@ jobs:
       - name: Install npm dependencies
         working-directory: apps/desktop
         run: npm ci
+
+      - name: Build frontend and type-check
+        working-directory: apps/desktop
+        run: npm run build
 
       - name: Build daemon
         run: cargo build --release --bin daemon
@@ -101,15 +106,26 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
+      - name: Build frontend and type-check
+        working-directory: apps/desktop
+        run: npm run build
+
+      - name: Run Rust tests (Windows)
+        run: cargo test --workspace --target x86_64-pc-windows-msvc
+
+      - name: Run desktop shell tests (Windows)
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+
       - name: Build daemon (Windows)
         run: cargo build --release --bin daemon --target x86_64-pc-windows-msvc
 
       - name: Stage embedded daemon
-        run: cp target/x86_64-pc-windows-msvc/release/daemon.exe apps/desktop/src-tauri/unikey-daemon.bin
+        shell: pwsh
+        run: Copy-Item target/x86_64-pc-windows-msvc/release/daemon.exe apps/desktop/src-tauri/unikey-daemon.bin
 
-      - name: Build desktop app (Windows)
+      - name: Build NSIS installer (Windows)
         working-directory: apps/desktop
-        run: npx tauri build
+        run: npx tauri build --bundles nsis --target x86_64-pc-windows-msvc
 
       - name: Stage downloadable Windows installer
         shell: pwsh
@@ -118,13 +134,21 @@ jobs:
             Select-Object -First 1
           if (-not $installer) { throw "Tauri did not produce an NSIS installer" }
           New-Item -ItemType Directory -Path "release-artifacts" -Force | Out-Null
-          Copy-Item $installer.FullName "release-artifacts/UniKey-Windows-x64-Setup.exe"
+          Copy-Item $installer.FullName "release-artifacts/UniKey-Setup.exe"
+          $hash = (Get-FileHash "release-artifacts/UniKey-Setup.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  UniKey-Setup.exe" | Set-Content -NoNewline "release-artifacts/UniKey-Setup.exe.sha256"
+
+      - name: Smoke-test install, launch, daemon lifecycle, and uninstall
+        shell: pwsh
+        run: .\scripts\windows\installer-smoke.ps1 -InstallerPath .\release-artifacts\UniKey-Setup.exe
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: UniKey-Windows-x64
-          path: release-artifacts/UniKey-Windows-x64-Setup.exe
+          path: |
+            release-artifacts/UniKey-Setup.exe
+            release-artifacts/UniKey-Setup.exe.sha256
           retention-days: 30
 
   # ── Cross-platform test (daemon only) ─────────────────────────────────

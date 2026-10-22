@@ -1,0 +1,133 @@
+/* Solid, semantic desktop layer. Loaded after the legacy token sheet so
+   existing screens inherit the refreshed palette without losing behavior. */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ground-1: #f6f6f3;
+  --ground-2: #efefeb;
+  --surface: #ffffff;
+  --surface-secondary: #f7f7f5;
+  --surface-tertiary: #efefec;
+  --sidebar: #edede9;
+  --ink: #1d1d1f;
+  --ink-2: #66666b;
+  --ink-3: #8d8d93;
+  --accent: #1769c2;
+  --accent-strong: #0d58ab;
+  --accent-soft: #e8f1fb;
+  --hairline: #deded9;
+  --row-hover: #f3f3f0;
+  --nav-hover: rgba(29, 29, 31, .055);
+  --nav-pill: #dce9f7;
+  --nav-pill-shadow: none;
+  --glass-bg: var(--surface);
+  --glass-solid: var(--surface);
+  --glass-border: var(--hairline);
+  --glass-highlight: transparent;
+  --card-shadow: 0 1px 2px rgba(20, 20, 24, .025);
+  --brand-bg: #202124;
+  --brand-fg: #fff;
+  --field-bg: #fff;
+  --field-focus: rgba(23, 105, 194, .18);
+  --chip-bg: var(--surface-secondary);
+  --chip-border: var(--hairline);
+  --chip-shadow: none;
+  --seg-bg: var(--surface-tertiary);
+  --seg-pill: var(--surface);
+  --seg-pill-shadow: 0 1px 2px rgba(20,20,24,.08);
+  --sw-off: #b7b7ba;
+  --sw-on: #1769c2;
+  --sw-glow: none;
+  --ok: #237a45;
+  --ok-soft: #e8f4ec;
+  --warn: #9a6400;
+  --warn-soft: #fbf1d9;
+  --danger: #c43c35;
+  --danger-soft: #fbeae8;
+  --focus-ring: 0 0 0 3px rgba(23,105,194,.2);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --tint-indigo: #4266a7;
+  --tint-sky: #2375a7;
+  --tint-teal: #287b75;
+  --tint-rose: #a44d62;
+  --tint-amber: #946a22;
+  --tint-violet: #725499;
+  --tint-emerald: #347b5b;
+  --tint-slate: #66717f;
+  --blob-opacity: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground-1: #18181a; --ground-2: #141416;
+    --surface: #242426; --surface-secondary: #2b2b2e; --surface-tertiary: #323236;
+    --sidebar: #202022;
+    --ink: #f4f4f5; --ink-2: #b1b1b7; --ink-3: #85858b;
+    --accent: #67a7ee; --accent-strong: #86baf2; --accent-soft: #203850;
+    --hairline: #3a3a3e; --row-hover: #2c2c2f;
+    --nav-hover: rgba(255,255,255,.06); --nav-pill: #263d55; --nav-pill-shadow: none;
+    --glass-bg: var(--surface); --glass-solid: var(--surface); --glass-border: var(--hairline);
+    --glass-highlight: transparent; --card-shadow: none;
+    --brand-bg: #f1f1f2; --brand-fg: #202022;
+    --field-bg: #2b2b2e; --field-focus: rgba(103,167,238,.22);
+    --chip-bg: var(--surface-secondary); --chip-border: var(--hairline); --chip-shadow: none;
+    --seg-bg: #1c1c1e; --seg-pill: #39393d; --seg-pill-shadow: 0 1px 2px rgba(0,0,0,.35);
+    --sw-off: #56565b; --sw-on: #4d91dc; --sw-glow: none;
+    --ok: #65c989; --ok-soft: #203a2a;
+    --warn: #e3b45e; --warn-soft: #44371e;
+    --danger: #f08a84; --danger-soft: #482725;
+    --focus-ring: 0 0 0 3px rgba(103,167,238,.26);
+    --tint-indigo: #91a8dc; --tint-sky: #75b6dc; --tint-teal: #72bdb5;
+    --tint-rose: #d795a4; --tint-amber: #dbb36c; --tint-violet: #b69bd5;
+    --tint-emerald: #84c3a0; --tint-slate: #a5afba;
+    --blob-opacity: 0;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground-1: #18181a; --ground-2: #141416;
+  --surface: #242426; --surface-secondary: #2b2b2e; --surface-tertiary: #323236;
+  --sidebar: #202022;
+  --ink: #f4f4f5; --ink-2: #b1b1b7; --ink-3: #85858b;
+  --accent: #67a7ee; --accent-strong: #86baf2; --accent-soft: #203850;
+  --hairline: #3a3a3e; --row-hover: #2c2c2f;
+  --nav-hover: rgba(255,255,255,.06); --nav-pill: #263d55; --nav-pill-shadow: none;
+  --glass-bg: var(--surface); --glass-solid: var(--surface); --glass-border: var(--hairline);
+  --glass-highlight: transparent; --card-shadow: none;
+  --brand-bg: #f1f1f2; --brand-fg: #202022;
+  --field-bg: #2b2b2e; --field-focus: rgba(103,167,238,.22);
+  --chip-bg: var(--surface-secondary); --chip-border: var(--hairline); --chip-shadow: none;
+  --seg-bg: #1c1c1e; --seg-pill: #39393d; --seg-pill-shadow: 0 1px 2px rgba(0,0,0,.35);
+  --sw-off: #56565b; --sw-on: #4d91dc; --sw-glow: none;
+  --ok: #65c989; --ok-soft: #203a2a;
+  --warn: #e3b45e; --warn-soft: #44371e;
+  --danger: #f08a84; --danger-soft: #482725;
+  --focus-ring: 0 0 0 3px rgba(103,167,238,.26);
+  --tint-indigo: #91a8dc; --tint-sky: #75b6dc; --tint-teal: #72bdb5;
+  --tint-rose: #d795a4; --tint-amber: #dbb36c; --tint-violet: #b69bd5;
+  --tint-emerald: #84c3a0; --tint-slate: #a5afba;
+  --blob-opacity: 0;
+}
+
+body { margin: 0; background: var(--ground-1); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; font-size: 14px; }
+button, input, select, textarea { font: inherit; }
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.stage { background: var(--ground-1); }
+.app-sidebar { background: var(--sidebar); border-right: 1px solid var(--hairline); }
+.app-topbar { background: color-mix(in srgb, var(--ground-1) 94%, transparent); border-bottom: 1px solid var(--hairline); }
+.content-shell { width: 100%; max-width: 1180px; margin-inline: auto; padding: 24px 28px 36px; }
+.surface-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--card-shadow); }
+
+@media (max-width: 900px) {
+  .content-shell { padding: 20px 18px 32px; }
+  .app-topbar { gap: 12px; padding-inline: 18px; }
+  .topbar-title { min-width: 104px; }
+  .topbar-title p { display: none; }
+  .topbar-search input, .topbar-search input:focus { width: 164px; }
+}
+@media (max-width: 720px) { .content-shell { padding: 16px 14px 28px; } }
+:root[data-rt] .app-topbar { background: var(--ground-1); }

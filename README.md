@@ -46,9 +46,9 @@ pairing, and services, plus an **HTTP API** on localhost that the desktop UI
 
 ## Highlights
 
-- **Portable by design** — every release is a self-contained folder. Copy it to
-  any machine and run the daemon; no Rust, no Cargo, no Visual Studio, no
-  installers, no command line.
+- **Installable or portable** — Windows users get a current-user NSIS desktop
+  installer; engineering builds also provide a self-contained daemon folder.
+  Neither requires Rust, Cargo, Node.js, Git, or Visual Studio at runtime.
 - **One-command builds** — `./scripts/build.sh` compiles, strips, packages,
   zips, and prints a summary.
 - **Self-healing runtime** — config, logs, keys, and identity are all
@@ -56,9 +56,10 @@ pairing, and services, plus an **HTTP API** on localhost that the desktop UI
   missing.
 - **Cross-platform architecture** — macOS, Linux, and Windows share the same
   business crates. Only macOS has been exercised during the current MVP audit.
-- **CI configured** — GitHub Actions definitions exist for macOS, Linux, and
-  Windows, but hosted runs were not verifiable while the remote repository was
-  unavailable.
+- **Native CI packaging** — GitHub Actions builds the Windows installer on a
+  genuine Windows runner and smoke-tests install, packaged-daemon startup,
+  graceful exit, and uninstall. Physical cross-device Windows behavior still
+  requires the separate laptop checklist.
 
 ---
 
@@ -116,13 +117,15 @@ cargo run --release -p daemon
 ./scripts/build.sh --ui --no-zip
 
 # Same on Windows (PowerShell)
-.\scripts\build.ps1 -Clean
+.\scripts\build.ps1 -Clean -UI
 ```
 
 See [docs/BUILD.md](docs/BUILD.md) for a deeper walkthrough and
 [docs/RELEASE.md](docs/RELEASE.md) for the release checklist.
 For the physical macOS-to-Windows verification procedure, see
 [docs/WINDOWS_TESTING.md](docs/WINDOWS_TESTING.md).
+For installer architecture, permissions, CI smoke testing, and signing status,
+see [docs/WINDOWS_RELEASE.md](docs/WINDOWS_RELEASE.md).
 
 Use the repository build script for native packaging. A direct
 `npx tauri build` embeds whichever `src-tauri/unikey-daemon.bin` is already
@@ -204,7 +207,7 @@ pairing, pinned trust, file transfer, and received-file content.
 ./scripts/build.sh --clean
 
 # Windows (PowerShell)
-.\scripts\build.ps1 -Clean
+.\scripts\build.ps1 -Clean -UI
 ```
 
 Produce:
@@ -212,6 +215,7 @@ Produce:
 ```text
 release/UniKey/                 ← copy anywhere, double-click to run
 release/UniKey-v0.1.0-<OS>.zip  ← distributable archive
+release/UniKey-Setup.exe        ← recommended Windows desktop installer
 ```
 
 `version.json` inside the release is stamped with the version, build date,

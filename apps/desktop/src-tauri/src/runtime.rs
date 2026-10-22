@@ -23,9 +23,6 @@ use crate::daemon;
 /// Marker file that switches a folder into "portable" mode.
 const PORTABLE_MARKER: &str = "unikey.portable";
 
-/// Where the embedded daemon is stored inside the extracted runtime dir.
-const EMBEDDED_DAEMON_NAME: &str = daemon::DAEMON_EXE_NAME;
-
 /// Which runtime layout is in effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum RuntimeOrigin {
@@ -83,7 +80,10 @@ impl ExtractedRuntime {
 fn embedded_daemon_bytes() -> Option<&'static [u8]> {
     #[cfg(unikey_embed_daemon)]
     {
-        Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/unikey-daemon.bin")))
+        Some(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/unikey-daemon.bin"
+        )))
     }
     #[cfg(not(unikey_embed_daemon))]
     {
@@ -91,13 +91,29 @@ fn embedded_daemon_bytes() -> Option<&'static [u8]> {
     }
 }
 
-/// Private application directory where the extracted daemon lives.
-fn runtime_dir() -> PathBuf {
-    let base = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("runtime")
+/// Private, per-user application directory where extracted binaries live.
+///
+/// Installed application folders are not reliably writable (notably
+/// `Program Files` on Windows and `/Applications` on macOS), so an embedded
+/// daemon must never be extracted beside the GUI executable.
+fn runtime_dir() -> Result<PathBuf, String> {
+    dirs::data_local_dir()
+        .map(|base| base.join("UniKey").join("runtime"))
+        .ok_or_else(|| "cannot determine the per-user application data directory".to_string())
+}
+
+/// Give each embedded daemon payload a content-addressed filename. Windows
+/// does not allow replacing a running executable, so versioned filenames make
+/// upgrades reliable even if a previous app instance crashed and left its
+/// daemon alive.
+fn embedded_daemon_name(bytes: &[u8]) -> String {
+    // FNV-1a is small, stable across Rust releases, and sufficient here: the
+    // fingerprint is only a deterministic filename, not a security boundary.
+    let fingerprint = bytes.iter().fold(0xcbf29ce484222325_u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+    });
+    let suffix = if cfg!(windows) { ".exe" } else { "" };
+    format!("unikey-daemon-{fingerprint:016x}{suffix}")
 }
 
 /// Resolve the active runtime layout, extracting/refreshing an embedded
@@ -135,37 +151,29 @@ pub fn resolve_runtime() -> Result<ExtractedRuntime, String> {
 /// Write the embedded daemon to the runtime dir, replacing it atomically when
 /// the on-disk copy is stale.
 fn extract_embedded(bytes: &'static [u8]) -> Result<ExtractedRuntime, String> {
-    let dir = runtime_dir();
+    let dir = runtime_dir()?;
     fs::create_dir_all(&dir)
         .map_err(|e| format!("cannot create runtime dir {}: {e}", dir.display()))?;
 
-    let target = dir.join(EMBEDDED_DAEMON_NAME);
-    let mut refreshed = false;
+    let embedded_name = embedded_daemon_name(bytes);
+    let target = dir.join(&embedded_name);
+    let refreshed = !target.exists();
 
-    // Compare sizes as a cheap staleness check — a differing size (or a
-    // missing file) means we should replace.
-    let stale = match fs::metadata(&target) {
-        Ok(m) => m.len() != bytes.len() as u64,
-        Err(_) => true,
-    };
-
-    if stale {
-        let tmp = dir.join(format!("{EMBEDDED_DAEMON_NAME}.new"));
+    if refreshed {
+        let tmp = dir.join(format!("{embedded_name}.new"));
         fs::write(&tmp, bytes)
             .map_err(|e| format!("cannot write daemon {}: {e}", tmp.display()))?;
         set_executable(&tmp)?;
 
-        // Atomic rename replaces any running copy's file on disk. On Windows
-        // this can fail if the old process still holds the file open — that
-        // case is handled by the caller (crash recovery).
+        // The target is content-addressed, so it is never a running older
+        // executable. Rename keeps a partial extraction from being launched.
         if let Err(e) = fs::rename(&tmp, &target) {
             let _ = fs::remove_file(&tmp); // clean up the partial write
             return Err(format!(
-                "cannot replace daemon {}: {e} (is an old daemon still running?)",
+                "cannot install embedded daemon {}: {e}",
                 target.display()
             ));
         }
-        refreshed = true;
     }
 
     Ok(ExtractedRuntime {
@@ -193,4 +201,23 @@ fn set_executable(path: &Path) -> Result<(), String> {
         let _ = path;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{embedded_daemon_name, runtime_dir};
+
+    #[test]
+    fn embedded_names_are_stable_and_content_addressed() {
+        assert_eq!(embedded_daemon_name(b"same"), embedded_daemon_name(b"same"));
+        assert_ne!(embedded_daemon_name(b"old"), embedded_daemon_name(b"new"));
+    }
+
+    #[test]
+    fn embedded_runtime_uses_per_user_data() {
+        let runtime = runtime_dir().expect("per-user data directory");
+        let executable = std::env::current_exe().expect("current executable");
+        assert!(!runtime.starts_with(executable.parent().expect("executable parent")));
+        assert!(runtime.ends_with("UniKey/runtime"));
+    }
 }

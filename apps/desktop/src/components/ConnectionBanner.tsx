@@ -17,10 +17,10 @@ export const ConnectionBanner: React.FC = () => {
   return (
     <div
       className={[
-        'flex items-center justify-center gap-3 border-b px-6 py-2.5 text-[13px] font-medium tracking-[-0.01em] backdrop-blur-xl',
+        'flex items-center justify-center gap-3 border-b px-6 py-2.5 text-[12.5px] font-medium tracking-[-0.01em]',
         connecting
-          ? 'border-amber-500/15 bg-amber-500/[0.06] text-amber-700 dark:bg-amber-400/[0.07] dark:text-amber-300'
-          : 'border-rose-500/15 bg-rose-500/[0.06] text-rose-700 dark:bg-rose-400/[0.07] dark:text-rose-300',
+          ? 'border-[var(--hairline)] bg-[var(--warn-soft)] text-[var(--warn)]'
+          : 'border-[var(--hairline)] bg-[var(--danger-soft)] text-[var(--danger)]',
       ].join(' ')}
     >
       <span className="relative flex h-2 w-2">

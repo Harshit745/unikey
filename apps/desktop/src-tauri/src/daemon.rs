@@ -4,10 +4,9 @@
 //! and (best-effort) shutting it down when the GUI exits.
 
 use std::path::PathBuf;
-use std::process::Stdio;
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -28,17 +27,38 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(15);
 const HEALTH_POLL: Duration = Duration::from_millis(250);
 
 /// A live handle to the daemon subprocess.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug)]
 pub struct DaemonHandle {
     pid: Option<u32>,
-    started_at_ms: u64,
-    /// Path to the binary we launched.
-    exe: PathBuf,
+    child: Option<Child>,
 }
 
 impl DaemonHandle {
     pub fn pid(&self) -> Option<u32> {
         self.pid
+    }
+
+    /// Whether the child process owned by this app is still alive.
+    pub fn is_running(&mut self) -> bool {
+        match self.child.as_mut() {
+            Some(child) => matches!(child.try_wait(), Ok(None)),
+            None => false,
+        }
+    }
+
+    /// Stop only the daemon spawned by this app. A daemon that was already
+    /// running before launch is deliberately never terminated here.
+    pub fn shutdown(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+impl Drop for DaemonHandle {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }
 
@@ -51,8 +71,7 @@ pub async fn spawn_daemon(runtime: &ExtractedRuntime) -> Result<DaemonHandle, Sp
     if health_json().await.status_ok() {
         return Ok(DaemonHandle {
             pid: None,
-            started_at_ms: now_ms(),
-            exe: runtime.daemon_path.clone(),
+            child: None,
         });
     }
 
@@ -61,7 +80,8 @@ pub async fn spawn_daemon(runtime: &ExtractedRuntime) -> Result<DaemonHandle, Sp
         return Err(SpawnError::MissingBinary(exe.clone()));
     }
 
-    // Spawn detached so it outlives the GUI process if the window closes.
+    // The GUI owns this child. Closing the window hides UniKey to the tray;
+    // choosing Quit terminates the daemon through `DaemonHandle::shutdown`.
     let mut cmd = std::process::Command::new(exe);
     cmd.current_dir(&runtime.dir)
         .stdin(Stdio::null())
@@ -70,27 +90,37 @@ pub async fn spawn_daemon(runtime: &ExtractedRuntime) -> Result<DaemonHandle, Sp
 
     #[cfg(windows)]
     {
-        // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS — keep it alive when the
-        // console (and GUI) exits.
+        // CREATE_NO_WINDOW: the daemon is a background child and must never
+        // flash a terminal window on launch.
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x00000200 | 0x00000008);
+        cmd.creation_flags(0x08000000);
     }
 
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .map_err(|e| SpawnError::Launch(exe.clone(), e))?;
     let pid = child.id();
 
     let started = Instant::now();
     loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Err(SpawnError::Exited(status)),
+            Ok(None) => {}
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(SpawnError::Inspect(error));
+            }
+        }
         if health_json().await.status_ok() {
             return Ok(DaemonHandle {
                 pid: Some(pid),
-                started_at_ms: now_ms(),
-                exe: exe.clone(),
+                child: Some(child),
             });
         }
         if started.elapsed() >= HEALTH_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait();
             return Err(SpawnError::Timeout(HEALTH_TIMEOUT));
         }
         tokio::time::sleep(HEALTH_POLL).await;
@@ -149,15 +179,22 @@ async fn reqwest(url: &str, timeout: Duration) -> Result<String, String> {
     };
 
     let fut = async {
-        let mut stream = TcpStream::connect(&host_port).await.map_err(|e| e.to_string())?;
+        let mut stream = TcpStream::connect(&host_port)
+            .await
+            .map_err(|e| e.to_string())?;
         stream.set_nodelay(true).map_err(|e| e.to_string())?;
-        let request = format!(
-            "GET {path} HTTP/1.1\r\nHost: {host_port}\r\nConnection: close\r\n\r\n"
-        );
-        stream.write_all(request.as_bytes()).await.map_err(|e| e.to_string())?;
+        let request =
+            format!("GET {path} HTTP/1.1\r\nHost: {host_port}\r\nConnection: close\r\n\r\n");
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
         stream.flush().await.map_err(|e| e.to_string())?;
         let mut response = Vec::new();
-        stream.read_to_end(&mut response).await.map_err(|e| e.to_string())?;
+        stream
+            .read_to_end(&mut response)
+            .await
+            .map_err(|e| e.to_string())?;
         Ok::<String, String>(
             String::from_utf8_lossy(&response)
                 .split("\r\n\r\n")
@@ -172,14 +209,6 @@ async fn reqwest(url: &str, timeout: Duration) -> Result<String, String> {
         .map_err(|_| "request timeout".to_string())?
 }
 
-fn now_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 /// Errors from launching the daemon.
 #[derive(Debug, thiserror::Error)]
 pub enum SpawnError {
@@ -187,6 +216,10 @@ pub enum SpawnError {
     MissingBinary(PathBuf),
     #[error("failed to launch daemon at {0}: {1}")]
     Launch(PathBuf, std::io::Error),
+    #[error("failed to inspect daemon process: {0}")]
+    Inspect(std::io::Error),
+    #[error("daemon exited before reporting healthy ({0})")]
+    Exited(std::process::ExitStatus),
     #[error("daemon did not report healthy within {0:?}")]
     Timeout(Duration),
 }
@@ -200,7 +233,7 @@ impl SpawnError {
 
 #[cfg(test)]
 mod tests {
-    use super::{HealthJsonExt, normalize_health_body};
+    use super::{normalize_health_body, HealthJsonExt};
 
     #[test]
     fn normalizes_daemon_health_envelope() {

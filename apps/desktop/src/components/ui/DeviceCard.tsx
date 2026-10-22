@@ -45,7 +45,7 @@ export function DeviceCard({
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.99 }}
       transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
-      className="group flex items-center gap-4 rounded-2xl border border-white/60 bg-white/55 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_2px_6px_rgba(31,34,55,0.06),0_16px_40px_-18px_rgba(31,34,55,0.22)] backdrop-blur-xl backdrop-saturate-150 dark:border-white/10 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_16px_40px_-18px_rgba(0,0,0,0.55)]"
+      className="surface-card group flex items-center gap-4 p-4"
     >
       <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-[13px] ${tint}`}>
         {icon}

@@ -29,7 +29,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="grid h-full place-items-center p-8">
-          <div className="w-full max-w-md rounded-3xl border border-white/60 bg-white/55 p-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_24px_60px_-16px_rgba(31,34,55,0.28)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#1b1b1e]/55 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_60px_-16px_rgba(0,0,0,0.6)]">
+          <div className="surface-card w-full max-w-md p-6 text-center">
             <p className="text-[17px] font-semibold leading-tight tracking-[-0.02em] text-neutral-900 dark:text-white">
               Something went wrong
             </p>

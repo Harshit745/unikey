@@ -5,8 +5,8 @@
  * AppShell: the three-state theme, the §14 accessibility overrides (Reduce
  * Motion / Reduce Transparency), and the sidebar collapsed flag.
  *
- * State persists to localStorage (`uk.*`) and is seeded from the system
- * media queries so System mode follows the OS until the user overrides it.
+ * State persists to localStorage (`uk.*`). Fresh installs start in the light
+ * reference theme; users can choose System or Dark in Settings.
  * A single effect stamps `data-theme` / `data-rm` / `data-rt` onto
  * <html>; tokens.css and the Tailwind `dark:` variant both key off those.
  *
@@ -47,8 +47,8 @@ export const AppearanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const systemReduceTransparency = useMediaQuery('(prefers-reduced-transparency: reduce)');
 
   const [theme, setTheme] = useState<Theme>(() => {
-    try { return (localStorage.getItem('uk.theme') as Theme) || 'system'; }
-    catch { return 'system'; }
+    try { return (localStorage.getItem('uk.theme') as Theme) || 'light'; }
+    catch { return 'light'; }
   });
   const [reduceMotion, setReduceMotion] = useState(() => storedFlag('uk.reduceMotion', systemReduceMotion));
   const [reduceTransparency, setReduceTransparency] = useState(() =>

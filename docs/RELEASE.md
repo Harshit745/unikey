@@ -40,6 +40,10 @@ release/
 └── UniKey-v0.1.0-<OS>.zip
 ```
 
+On Windows, `-UI` also produces `release\UniKey-Setup.exe`. Its lifecycle,
+storage, permissions, smoke test, and signing requirements are documented in
+[WINDOWS_RELEASE.md](WINDOWS_RELEASE.md).
+
 ## Versioning
 
 - The single source of truth is `[workspace.package] version` in `Cargo.toml`
@@ -95,7 +99,7 @@ The tag starts the desktop release job. Its GitHub Release contains stable,
 user-facing filenames:
 
 - `UniKey-macOS-universal.dmg`
-- `UniKey-Windows-x64-Setup.exe`
+- `UniKey-Setup.exe`
 
 Ordinary branch builds remain downloadable from the workflow run's **Artifacts**
 section for 30 days. Tagged Release assets remain available from the

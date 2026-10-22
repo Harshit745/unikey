@@ -1,19 +1,16 @@
 /**
  * TopBar.tsx
  * ----------
- * Window header: breadcrumb + page title, a glass search field, the live
- * daemon status chip, the system/light/dark picker, and the host badge.
- * Ported from the app-ui study; the status chip is wired to the real
- * daemon health poll instead of a hardcoded "3 connected".
+ * Compact window header with the current page, route search, and the live
+ * daemon state. Theme controls remain in Settings to keep this toolbar quiet.
  */
 
-import React, { useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Search, ChevronRight, Lock } from 'lucide-react';
-import { useAppearance, type Theme } from '@/context/AppearanceContext';
+import { Search } from 'lucide-react';
+import { useAppearance } from '@/context/AppearanceContext';
 import { useDaemon } from '@/context/DaemonContext';
-import { Segmented } from '@/components/ui/primitives';
 
 export const ROUTE_META: Record<string, { title: string; subtitle: string }> = {
   '/': { title: 'Dashboard', subtitle: 'System overview at a glance' },
@@ -29,9 +26,12 @@ export const ROUTE_META: Record<string, { title: string; subtitle: string }> = {
 
 export const TopBar: React.FC = () => {
   const { pathname } = useLocation();
-  const { theme, setTheme, reduceMotion } = useAppearance();
+  const navigate = useNavigate();
+  const { reduceMotion } = useAppearance();
   const { daemonReachable } = useDaemon();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // ⌘K focuses search.
   useEffect(() => {
@@ -46,93 +46,92 @@ export const TopBar: React.FC = () => {
   }, []);
 
   const meta = ROUTE_META[pathname] ?? ROUTE_META['/'];
+  const results = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return [];
+    return Object.entries(ROUTE_META).filter(([, item]) =>
+      `${item.title} ${item.subtitle}`.toLowerCase().includes(needle),
+    );
+  }, [query]);
+
+  const goTo = (path: string) => {
+    navigate(path);
+    setQuery('');
+    setSearchOpen(false);
+  };
 
   return (
     <motion.header
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={reduceMotion ? { duration: 0.1 } : { duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-black/[0.06] bg-white/25 px-6 py-4 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/[0.08] dark:bg-white/[0.02]"
+      className="app-topbar z-20 flex min-h-[76px] flex-wrap items-center gap-x-5 gap-y-3 px-7 py-3"
     >
-      {/* Breadcrumb + title */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1 text-[11.5px] font-medium tracking-[-0.01em] text-black/45 dark:text-white/45">
-          <span>UniKey</span>
-          <ChevronRight className="h-3 w-3 opacity-60" />
-          <span className="text-indigo-500 dark:text-indigo-300">{meta.title}</span>
-        </div>
-        <h1 className="mt-0.5 truncate text-[17px] font-semibold leading-tight tracking-[-0.02em] text-neutral-900 dark:text-white">
+      <div className="topbar-title min-w-0 flex-1">
+        <h1 className="truncate text-[18px] font-semibold leading-tight tracking-[-0.025em] text-[var(--ink)]">
           {meta.title}
         </h1>
-        <p className="truncate text-[12px] leading-tight tracking-[-0.01em] text-black/45 dark:text-white/45">
+        <p className="mt-1 truncate text-[12px] leading-tight tracking-[-0.01em] text-[var(--ink-2)]">
           {meta.subtitle}
         </p>
       </div>
 
       {/* Search */}
-      <label className="group relative flex min-w-0 items-center">
-        <Search className="pointer-events-none absolute left-3 h-4 w-4 text-black/35 dark:text-white/35" />
+      <div className="topbar-search relative min-w-0">
+        <label className="relative flex items-center">
+        <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-[var(--ink-3)]" />
         <input
           ref={inputRef}
           type="search"
-          placeholder="Search devices, clipboard…"
-          aria-label="Search"
-          className="h-9 w-52 rounded-full border border-white/60 bg-black/[0.04] pl-9 pr-12 text-[13px] tracking-[-0.01em] text-neutral-900 outline-none transition-all duration-200 placeholder:text-black/35 focus:w-64 focus:border-indigo-400/40 focus:bg-black/[0.06] focus:ring-2 focus:ring-indigo-400/30 dark:border-white/10 dark:bg-white/[0.06] dark:text-white dark:placeholder:text-white/35"
+          value={query}
+          onChange={event => { setQuery(event.target.value); setSearchOpen(true); }}
+          onFocus={() => setSearchOpen(true)}
+          onKeyDown={event => {
+            if (event.key === 'Enter' && results[0]) goTo(results[0][0]);
+            if (event.key === 'Escape') { setSearchOpen(false); inputRef.current?.blur(); }
+          }}
+          placeholder="Search screens"
+          aria-label="Search screens"
+          aria-expanded={searchOpen && query.length > 0}
+          className="h-9 w-52 rounded-[9px] border border-[var(--hairline)] bg-[var(--field-bg)] pl-9 pr-11 text-[12.5px] text-[var(--ink)] outline-none transition-[width,border-color,box-shadow] duration-150 placeholder:text-[var(--ink-3)] focus:w-60 focus:border-[var(--accent)]"
         />
-        <kbd className="pointer-events-none absolute right-2.5 rounded-[6px] border border-black/10 bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold tracking-[-0.01em] text-black/45 shadow-[0_1px_1px_rgba(31,34,55,0.08)] dark:border-white/15 dark:bg-white/10 dark:text-white/45">
+        <kbd className="pointer-events-none absolute right-2.5 rounded-[5px] border border-[var(--hairline)] bg-[var(--surface-secondary)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--ink-3)]">
           ⌘K
         </kbd>
-      </label>
+        </label>
+        {searchOpen && query && (
+          <div className="surface-card absolute right-0 top-11 z-50 w-72 overflow-hidden p-1.5" role="listbox">
+            {results.length ? results.slice(0, 6).map(([path, item]) => (
+              <button key={path} type="button" onMouseDown={() => goTo(path)} className="block w-full rounded-[8px] px-3 py-2 text-left hover:bg-[var(--row-hover)]">
+                <span className="block text-[13px] font-medium text-[var(--ink)]">{item.title}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-[var(--ink-2)]">{item.subtitle}</span>
+              </button>
+            )) : <p className="px-3 py-3 text-[12px] text-[var(--ink-2)]">No matching screen</p>}
+          </div>
+        )}
+      </div>
 
       {/* Daemon status chip */}
       <div
         className={[
-          'flex items-center gap-2 rounded-full border border-white/60 bg-white/50 py-1.5 pl-2.5 pr-3 shadow-[0_1px_2px_rgba(31,34,55,0.06)] backdrop-blur-xl',
-          'dark:border-white/10 dark:bg-white/[0.06]',
+          'flex items-center gap-2 rounded-full border border-[var(--hairline)] bg-[var(--surface)] py-1.5 pl-2.5 pr-3',
         ].join(' ')}
       >
         <span className="relative flex h-2 w-2">
           {daemonReachable && (
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--ok)] opacity-50" />
           )}
           <span
             className={[
               'relative inline-flex h-2 w-2 rounded-full',
-              daemonReachable ? 'bg-emerald-500' : 'bg-rose-500',
+              daemonReachable ? 'bg-[var(--ok)]' : 'bg-[var(--danger)]',
             ].join(' ')}
           />
         </span>
-        <span className="text-[12px] font-medium leading-none tracking-[-0.01em] text-neutral-900 dark:text-white">
+        <span className="text-[12px] font-medium leading-none tracking-[-0.01em] text-[var(--ink)]">
           {daemonReachable ? 'Daemon online' : 'Daemon offline'}
         </span>
-        <span className="text-[12px] leading-none text-black/40 dark:text-white/40">·</span>
-        <Lock className="h-3 w-3 text-black/40 dark:text-white/40" />
-        <span className="text-[12px] font-medium leading-none tracking-[-0.01em] text-black/50 dark:text-white/50">
-          E2E
-        </span>
       </div>
-
-      {/* Theme picker */}
-      <Segmented<Theme>
-        ariaLabel="Theme"
-        layoutId="seg-theme-topbar"
-        value={theme}
-        onChange={setTheme}
-        reduceMotion={reduceMotion}
-        options={[
-          { value: 'system', label: 'System' },
-          { value: 'light', label: 'Light' },
-          { value: 'dark', label: 'Dark' },
-        ]}
-      />
-
-      {/* Avatar */}
-      <span
-        title="Host device"
-        className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-indigo-500/20 to-violet-500/20 text-[12px] font-bold tracking-tight text-indigo-600 ring-1 ring-inset ring-indigo-500/20 dark:text-indigo-300"
-      >
-        UK
-      </span>
     </motion.header>
   );
 };

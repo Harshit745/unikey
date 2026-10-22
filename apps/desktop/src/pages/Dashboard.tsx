@@ -1,15 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 import { useDaemon } from '@/context/DaemonContext';
 import { usePoll } from '@/hooks/usePoll';
 import { api, subscribeEvents } from '@/api/client';
 import type { ServicesResponse, SessionInfo, TransferInfo, Envelope } from '@/api/types';
-import { StatCard, type SparkColor } from '@/components/ui/StatCard';
+import { StatCard } from '@/components/ui/StatCard';
 import { GlassCard, IconTile } from '@/components/ui/primitives';
 import { Table, Th, Td, Tr } from '@/components/ui/table';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/controls';
 import { useAppearance } from '@/context/AppearanceContext';
+import { Button } from '@/components/ui/Button';
 import {
   Activity,
   Wrench,
@@ -40,13 +42,6 @@ function formatBytes(n: number): string {
 /** ISO timestamp → "HH:MM:SS" for the activity feed. */
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-/** 12-point sparkline shaped by a single boolean — spikes at the tail when active. */
-function generateSparkFromBool(active: boolean): number[] {
-  const points = Array.from({ length: 12 }, () => 0);
-  points[11] = active ? 1 : 0;
-  return points;
 }
 
 /** A single row of the live activity feed. */
@@ -144,6 +139,7 @@ const serviceTone = (status: string) =>
 
 const Dashboard: React.FC = () => {
   const { daemonReachable } = useDaemon();
+  const navigate = useNavigate();
   const { reduceMotion } = useAppearance();
   const { data: services } = usePoll<ServicesResponse>(api.services, 3000);
   const { data: sessions } = usePoll<SessionInfo[]>(api.sessions, 2500);
@@ -165,48 +161,29 @@ const Dashboard: React.FC = () => {
   const sessionCount = sessions?.length ?? 0;
   const activeTransfers = transfers?.filter(t => t.status === 'InProgress' || t.status === 'Queued').length ?? 0;
 
-  const daemonSparkColor: SparkColor = 'indigo';
-  const servicesSparkColor: SparkColor = 'sky';
-  const sessionsSparkColor: SparkColor = 'emerald';
-  const transfersSparkColor: SparkColor = 'violet';
-
-  const daemonSpark = useMemo(() => generateSparkFromBool(daemonReachable), [daemonReachable]);
-  const servicesSpark = useMemo(
-    () => Array.from({ length: 12 }, (_, i) => (i < running ? total : 0)),
-    [running, total],
-  );
-  const sessionsSpark = useMemo(
-    () => Array.from({ length: 12 }, (_, i) => (i < sessionCount ? sessionCount : 0)),
-    [sessionCount],
-  );
-  const transfersSpark = useMemo(
-    () => Array.from({ length: 12 }, (_, i) => (i < activeTransfers ? activeTransfers : 0)),
-    [activeTransfers],
-  );
-
-  const cardTitle = 'px-4 pt-4 pb-3 text-[15px] font-semibold leading-tight tracking-[-0.02em] text-neutral-900 dark:text-white';
-  const muted = 'px-4 pb-4 text-[13px] text-black/50 dark:text-white/50';
+  const cardTitle = 'px-4 pt-4 pb-3 text-[14px] font-semibold leading-tight tracking-[-0.015em] text-[var(--ink)]';
+  const muted = 'px-4 pb-4 text-[12.5px] text-[var(--ink-2)]';
 
   return (
     <>
       {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
         <StatCard
           icon={<Activity />}
           tint="bg-indigo-500/15 text-indigo-600 dark:bg-indigo-400/20 dark:text-indigo-300"
           valueNode={daemonReachable ? 'Online' : 'Offline'}
           label="Daemon status"
-          spark={daemonSpark}
-          sparkColor={daemonSparkColor}
+          detail={daemonReachable ? 'Responding normally' : 'Connection unavailable'}
+          tone={daemonReachable ? 'success' : 'danger'}
           reduceMotion={reduceMotion}
         />
         <StatCard
           icon={<Wrench />}
           tint="bg-sky-500/15 text-sky-600 dark:bg-sky-400/20 dark:text-sky-300"
           value={running}
-          label={`${running} of ${total}`}
-          spark={servicesSpark}
-          sparkColor={servicesSparkColor}
+          label="Services running"
+          detail={services ? `${running} of ${total} available` : 'Loading status'}
+          tone={total > 0 && running === total ? 'success' : total > 0 ? 'warning' : 'neutral'}
           reduceMotion={reduceMotion}
         />
         <StatCard
@@ -214,8 +191,7 @@ const Dashboard: React.FC = () => {
           tint="bg-teal-500/15 text-teal-600 dark:bg-teal-400/20 dark:text-teal-300"
           value={sessionCount}
           label="Active sessions"
-          spark={sessionsSpark}
-          sparkColor={sessionsSparkColor}
+          detail={sessions ? (sessionCount ? 'Secure connections' : 'No connected peers') : 'Loading sessions'}
           reduceMotion={reduceMotion}
         />
         <StatCard
@@ -223,22 +199,26 @@ const Dashboard: React.FC = () => {
           tint="bg-violet-500/15 text-violet-600 dark:bg-violet-400/20 dark:text-violet-300"
           value={activeTransfers}
           label="Active transfers"
-          spark={transfersSpark}
-          sparkColor={transfersSparkColor}
+          detail={transfers ? (activeTransfers ? 'In progress or queued' : 'Transfer queue clear') : 'Loading transfers'}
           reduceMotion={reduceMotion}
         />
       </div>
 
       {/* Sessions + live activity */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <GlassCard className="p-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <GlassCard className="p-0">
           <h3 className={cardTitle}>Sessions</h3>
           {!daemonReachable ? (
             <p className={muted}>Daemon offline</p>
           ) : !sessions ? (
             <p className={muted}>Loading…</p>
           ) : sessions.length === 0 ? (
-            <p className={muted}>No active sessions — pair and connect a device.</p>
+            <EmptyState
+              icon={<Monitor className="h-5 w-5" />}
+              title="No active sessions"
+              description="Pair a trusted device, then connect it on the same network."
+              action={<Button size="sm" onClick={() => navigate('/pairing')}>Open pairing</Button>}
+            />
           ) : (
             <Table>
               <Tr><Th>Peer</Th><Th>Platform</Th><Th>RTT</Th></Tr>
@@ -256,7 +236,11 @@ const Dashboard: React.FC = () => {
         <GlassCard className="p-0">
           <h3 className={cardTitle}>Live activity</h3>
           {feed.length === 0 ? (
-            <p className={muted}>Waiting for events… (clipboard syncs, transfers, sessions)</p>
+            <EmptyState
+              icon={<Radio className="h-5 w-5" />}
+              title={daemonReachable ? 'Waiting for activity' : 'Daemon offline'}
+              description={daemonReachable ? 'Session, clipboard, and file events will appear here as they happen.' : 'Activity resumes automatically after the daemon reconnects.'}
+            />
           ) : (
             <div className="flex flex-col gap-0.5 p-2">
               {feed.map((env, i) => {
@@ -292,6 +276,7 @@ const Dashboard: React.FC = () => {
             icon={<FolderUp className="h-5 w-5" />}
             title="No transfers yet"
             description="Transfers will appear here as you send and receive files."
+            action={<Button size="sm" variant="secondary" onClick={() => navigate('/files')}>Open files</Button>}
           />
         ) : (
           <Table>

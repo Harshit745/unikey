@@ -1,7 +1,7 @@
 /**
  * Layout.tsx
  * ----------
- * The full-window glass shell: aurora backdrop, collapsible sidebar,
+ * The full-window desktop shell: sidebar,
  * top bar, offline banner, and the routed content column. Route changes
  * cross-fade via AnimatePresence keyed on the pathname. The sidebar
  * persists across routes so the nav pill keeps its layoutId.
@@ -27,13 +27,7 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="stage">
-      {/* Aurora — the "content scrolling under" the glass (§12) */}
-      <div className="blobs" aria-hidden="true">
-        <span className="blob b1" /><span className="blob b2" /><span className="blob b3" />
-        <span className="blob b4" /><span className="blob b5" />
-      </div>
-
-      <div className="relative z-10 flex h-full">
+      <div className="flex h-full">
         <Sidebar />
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -43,15 +37,15 @@ export const Layout: React.FC = () => {
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={pathname}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 3 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
+                exit={{ opacity: 0, y: -2 }}
                 transition={
                   reduceMotion
                     ? { duration: 0.1 }
-                    : { duration: 0.28, ease: [0.22, 1, 0.36, 1] }
+                    : { duration: 0.18, ease: [0.22, 1, 0.36, 1] }
                 }
-                className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-6"
+                className="content-shell flex flex-col gap-5"
               >
                 <Outlet />
               </motion.div>

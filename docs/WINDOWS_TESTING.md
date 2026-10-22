@@ -8,7 +8,7 @@ not treat a successful build as proof of cross-platform interoperability.
 Use installers from the same tagged GitHub Release:
 
 - `UniKey-macOS-universal.dmg`
-- `UniKey-Windows-x64-Setup.exe`
+- `UniKey-Setup.exe`
 
 Until a tagged release exists, build on each operating system from the same
 commit:

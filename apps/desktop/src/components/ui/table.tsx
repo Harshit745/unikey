@@ -10,7 +10,7 @@ import React from 'react';
 
 export const Table: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="w-full overflow-x-auto">
-    <table className="w-full border-collapse text-[13px]">{children}</table>
+    <table className="w-full border-collapse text-[13px]"><tbody>{children}</tbody></table>
   </div>
 );
 
@@ -20,7 +20,7 @@ export const Th: React.FC<{ className?: string; children: React.ReactNode }> = (
 }) => (
   <th
     className={[
-      'whitespace-nowrap px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-black/45 dark:text-white/45',
+      'whitespace-nowrap border-b border-[var(--hairline)] px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-3)]',
       className,
     ].join(' ')}
   >
@@ -34,7 +34,7 @@ export const Td: React.FC<{ className?: string; children: React.ReactNode }> = (
 }) => (
   <td
     className={[
-      'border-b border-black/[0.05] px-4 py-3 align-middle dark:border-white/[0.06]',
+      'border-b border-[var(--hairline)] px-4 py-3 align-middle text-[var(--ink)]',
       className,
     ].join(' ')}
   >
@@ -48,7 +48,7 @@ export const Tr: React.FC<{ className?: string; children: React.ReactNode }> = (
 }) => (
   <tr
     className={[
-      'transition-colors duration-100 last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]',
+      'transition-colors duration-100 last:border-0 hover:bg-[var(--row-hover)]',
       className,
     ].join(' ')}
   >

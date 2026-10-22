@@ -11,6 +11,9 @@ and how to customise it.
 
 # Windows (PowerShell)
 .\scripts\build.ps1 -Clean
+
+# Windows NSIS desktop installer
+.\scripts\build.ps1 -Clean -UI
 ```
 
 The script does, in order:
@@ -29,6 +32,11 @@ The script does, in order:
 4. **Zip** — `release/UniKey-v<version>-<OS>.zip` (skippable with `--no-zip`).
 5. **Report** — platform, profile, version, build time, binary size, package
    size, output path.
+
+With `-UI` on Windows, the script additionally builds the Tauri shell, embeds
+the freshly compiled Windows daemon, and copies the NSIS package to
+`release\UniKey-Setup.exe`. See [WINDOWS_RELEASE.md](WINDOWS_RELEASE.md) for
+installer behavior, permissions, CI verification, and signing status.
 
 ## Build flags
 

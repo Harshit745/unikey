@@ -8,7 +8,7 @@ failures to runtime crashes.
 | Symptom                      | First stop                                              |
 |------------------------------|---------------------------------------------------------|
 | Build fails                  | `cargo build --release -p daemon --verbose`             |
-| Daemon won't start           | `logs/latest.log` (and `logs/panic.log`) in the folder |
+| Daemon won't start           | `logs/latest.log` (and `logs/panic.log`) in the data root |
 | Daemon crashes               | `logs/panic.log`                                        |
 | Port conflict                | `config/unikey.toml` → `[network]`                      |
 | UI can't reach the daemon    | `curl http://127.0.0.1:45895/api/v1/health`             |
@@ -96,6 +96,22 @@ to `logs/latest.log`. Debug builds keep the console for development.
 It is likely running — check `logs/latest.log` and the health endpoint.
 To stop it, use Task Manager (end `daemon.exe`).
 
+### The installed desktop app says the daemon is offline
+
+Check `%APPDATA%\UniKey\logs\latest.log`, then confirm that
+`http://127.0.0.1:45895/health` returns `{ "status": "ok" }`. The packaged
+daemon is extracted under `%LOCALAPPDATA%\UniKey\runtime`. Do not add a
+firewall rule for 45895: it is deliberately localhost-only. If an older
+standalone daemon is already using the port, stop that process and use the
+desktop app's **Retry** action.
+
+### Windows warns that the installer is unrecognized
+
+Development installers are currently unsigned. Windows SmartScreen may warn
+about a build that has not established publisher reputation. Verify the
+SHA-256 file from the same CI artifact. Public distribution requires a
+reviewed code-signing certificate; do not disable SmartScreen system-wide.
+
 ## macOS-specific
 
 ### "Cannot open daemon because it is from an unidentified developer"
@@ -106,8 +122,9 @@ attribute. For distribution, sign and notarise the binary (future work).
 ## FAQ
 
 **Where is my data stored?**
-Portable releases: inside the release folder (`config/`, `logs/`). Development
-runs: the OS per-user config directory under `UniKey/`.
+Portable releases: inside the release folder (`config/`, `logs/`). Installed
+Windows and development runs: the OS per-user config directory under
+`UniKey/` (`%APPDATA%\UniKey` on Windows).
 
 **How do I change the device name?**
 Set `device_name` in `config/unikey.toml` and restart the daemon.

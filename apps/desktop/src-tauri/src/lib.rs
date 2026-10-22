@@ -23,8 +23,9 @@ use tauri::{Manager, State};
 
 /// Shared launcher state, handed to commands as `State<'_, LauncherState>`.
 struct LauncherState {
-    /// Tracks whether we already spawned the daemon this session.
-    spawned: Mutex<bool>,
+    /// Serializes health-check/restart operations so two UI calls cannot spawn
+    /// competing daemon children.
+    launch: tokio::sync::Mutex<()>,
     /// Resolved runtime layout + the last daemon handle we started.
     runtime: Mutex<Option<runtime::ExtractedRuntime>>,
     handle: Mutex<Option<DaemonHandle>>,
@@ -51,7 +52,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_notification::init())
         .manage(LauncherState {
-            spawned: Mutex::new(false),
+            launch: tokio::sync::Mutex::new(()),
             runtime: Mutex::new(Some(runtime)),
             handle: Mutex::new(None),
         })
@@ -68,10 +69,67 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 notify::watch_daemon_events(app_handle).await;
             });
+            setup_installer_smoke_exit(app);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running the UniKey desktop shell");
+        .on_window_event(|window, event| {
+            // Keep UniKey and its managed daemon available in the tray. The
+            // explicit tray Quit action performs the real shutdown.
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building the UniKey desktop shell")
+        .run(|app, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
+            ) {
+                shutdown_owned_daemon(app.state::<LauncherState>().inner());
+            }
+        });
+}
+
+/// CI launches the installed application with `--installer-smoke-test`.
+/// The normal React startup still extracts and starts the real daemon; this
+/// watchdog exits successfully only after the localhost health endpoint is
+/// live. That exercises the packaged binary and graceful child shutdown
+/// without adding a fake transport path to production behavior.
+fn setup_installer_smoke_exit(app: &tauri::App) {
+    if !std::env::args().any(|arg| arg == "--installer-smoke-test") {
+        return;
+    }
+
+    let app_handle = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while std::time::Instant::now() < deadline {
+            let health = daemon::health_json().await;
+            if matches!(
+                health.get("status").and_then(|value| value.as_str()),
+                Some("ok" | "running")
+            ) {
+                // Leave a short observation window so the Windows smoke
+                // script can query /health, /version, and /services while the
+                // installed process and its real daemon are both alive.
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                app_handle.exit(0);
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        app_handle.exit(2);
+    });
+}
+
+fn shutdown_owned_daemon(state: &LauncherState) {
+    if let Some(mut handle) = state.handle.lock().unwrap().take() {
+        handle.shutdown();
+    }
 }
 
 // ── System tray ────────────────────────────────────────────────────────
@@ -135,19 +193,21 @@ fn show_main_window(app: &tauri::AppHandle) {
 /// ever spawned per GUI session.
 #[tauri::command]
 async fn daemon_start(state: State<'_, LauncherState>) -> Result<serde_json::Value, String> {
-    // Check whether we already spawned the daemon this session.
-    let already_spawned = {
-        let mut guard = state.spawned.lock().unwrap();
-        if *guard {
-            true
-        } else {
-            *guard = true;
-            false
-        }
-    };
+    let _launch_guard = state.launch.lock().await;
 
-    if already_spawned {
-        return daemon_status(state).await;
+    let health = daemon::health_json().await;
+    if health.get("status").and_then(|value| value.as_str()) == Some("ok")
+        || health.get("status").and_then(|value| value.as_str()) == Some("running")
+    {
+        return Ok(health);
+    }
+
+    // An owned daemon stopped responding or exited. Reap it before starting
+    // a replacement so retries recover from crashes and stale port state.
+    if let Some(mut existing) = state.handle.lock().unwrap().take() {
+        if existing.is_running() {
+            existing.shutdown();
+        }
     }
 
     let runtime = state
@@ -159,16 +219,11 @@ async fn daemon_start(state: State<'_, LauncherState>) -> Result<serde_json::Val
 
     let handle = match daemon::spawn_daemon(&runtime).await {
         Ok(handle) => handle,
-        Err(error) => {
-            // A missing/stale binary or a transient port conflict must not
-            // permanently disable the Retry action for this app session.
-            *state.spawned.lock().unwrap() = false;
-            return Err(error.to_string());
-        }
+        Err(error) => return Err(error.to_string()),
     };
     *state.handle.lock().unwrap() = Some(handle);
 
-    Ok(daemon_status(state).await?)
+    Ok(daemon::health_json().await)
 }
 
 /// Report whether the daemon is reachable via its health endpoint.
@@ -182,13 +237,13 @@ async fn daemon_status(state: State<'_, LauncherState>) -> Result<serde_json::Va
 #[tauri::command]
 fn runtime_info(state: State<'_, LauncherState>) -> Result<serde_json::Value, String> {
     let runtime = state.runtime.lock().unwrap().clone();
-    let handle = state.handle.lock().unwrap().clone();
+    let handle = state.handle.lock().unwrap();
     match runtime {
         Some(r) => Ok(serde_json::json!({
             "origin": r.origin.as_str(),
             "runtime_dir": r.dir.display().to_string(),
             "daemon_path": r.daemon_path.display().to_string(),
-            "daemon_pid": handle.map(|h| h.pid()),
+            "daemon_pid": handle.as_ref().and_then(|h| h.pid()),
         })),
         None => Err("runtime not resolved".to_string()),
     }

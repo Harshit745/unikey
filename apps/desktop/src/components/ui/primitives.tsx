@@ -152,11 +152,11 @@ export function SpringSwitch({ checked, onChange, label, reduceMotion, disabled 
       }}
       className={[
         'relative h-[28px] w-[48px] shrink-0 rounded-full outline-none transition-colors duration-200',
-        'focus-visible:ring-2 focus-visible:ring-indigo-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white/60 dark:focus-visible:ring-offset-black/40',
+        'focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]',
         disabled ? 'opacity-40' : 'cursor-pointer',
         checked
-          ? 'bg-indigo-500 shadow-[0_0_14px_rgba(99,102,241,0.45)] dark:bg-indigo-500'
-          : 'bg-black/15 dark:bg-white/20',
+          ? 'bg-[var(--sw-on)]'
+          : 'bg-[var(--sw-off)]',
       ].join(' ')}
       style={{ touchAction: 'none' }}
     >
@@ -198,7 +198,7 @@ export function Segmented<T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       className={[
-        'flex shrink-0 rounded-[11px] bg-black/[0.06] p-[3px] dark:bg-white/[0.08]',
+        'flex shrink-0 rounded-[10px] bg-[var(--seg-bg)] p-[3px]',
         className,
       ].join(' ')}
     >
@@ -213,10 +213,10 @@ export function Segmented<T extends string>({
             onClick={() => onChange(opt.value)}
             className={[
               'relative rounded-[9px] px-3 py-[5px] text-[12.5px] font-medium outline-none',
-              'transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-indigo-400/70',
+              'transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
               active
-                ? 'text-neutral-900 dark:text-white'
-                : 'text-black/55 hover:text-black/80 dark:text-white/55 dark:hover:text-white/80',
+                ? 'text-[var(--ink)]'
+                : 'text-[var(--ink-2)] hover:text-[var(--ink)]',
             ].join(' ')}
           >
             {active && (
@@ -227,7 +227,7 @@ export function Segmented<T extends string>({
                     ? { duration: 0.08 }
                     : { type: 'spring', bounce: 0, duration: 0.45 }
                 }
-                className="absolute inset-0 rounded-[9px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] dark:bg-white/15 dark:shadow-[0_1px_3px_rgba(0,0,0,0.4)]"
+                className="absolute inset-0 rounded-[8px] bg-[var(--seg-pill)] shadow-[var(--seg-pill-shadow)]"
               />
             )}
             <span className="relative z-10 whitespace-nowrap">{opt.label}</span>
@@ -280,11 +280,7 @@ export function GlassCard({
     <Tag
       aria-label={ariaLabel}
       className={[
-        // §12 — bright top edge catching light, layered depth shadow.
-        'relative overflow-hidden rounded-3xl border border-white/60',
-        '[box-shadow:inset_0_1px_0_rgba(255,255,255,0.7),0_2px_6px_rgba(31,34,55,0.08),0_24px_60px_-16px_rgba(31,34,55,0.28)]',
-        'dark:border-white/10 dark:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.12),0_24px_60px_-16px_rgba(0,0,0,0.6)]',
-        'bg-white/55 backdrop-blur-2xl backdrop-saturate-150 dark:bg-[#1b1b1e]/55',
+        'surface-card relative overflow-hidden',
         className,
       ].join(' ')}
     >
@@ -312,15 +308,15 @@ export function SectionHeader({
     <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
       <div>
         {eyebrow && (
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-500 dark:text-indigo-300">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-[var(--accent)]">
             {eyebrow}
           </p>
         )}
-        <h2 className="text-[20px] font-semibold leading-tight tracking-[-0.025em] text-neutral-900 dark:text-white">
+        <h2 className="text-[20px] font-semibold leading-tight tracking-[-0.025em] text-[var(--ink)]">
           {title}
         </h2>
         {description && (
-          <p className="mt-1 text-[13.5px] leading-snug tracking-[-0.01em] text-black/50 dark:text-white/50">
+          <p className="mt-1 text-[13.5px] leading-snug tracking-[-0.01em] text-[var(--ink-2)]">
             {description}
           </p>
         )}

@@ -9,11 +9,10 @@
 import React from 'react';
 
 const fieldCls = [
-  'h-9 w-full rounded-xl border border-white/60 bg-black/[0.04] px-3 text-[13px] tracking-[-0.01em]',
-  'text-neutral-900 outline-none transition-all duration-150',
-  'placeholder:text-black/35',
-  'focus:border-indigo-400/40 focus:bg-black/[0.06] focus:ring-2 focus:ring-indigo-400/30',
-  'dark:border-white/10 dark:bg-white/[0.06] dark:text-white dark:placeholder:text-white/35',
+  'h-9 w-full rounded-[9px] border border-[var(--hairline)] bg-[var(--field-bg)] px-3 text-[13px] tracking-[-0.01em]',
+  'text-[var(--ink)] outline-none transition-all duration-150',
+  'placeholder:text-[var(--ink-3)]',
+  'focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--field-focus)]',
 ].join(' ');
 
 export const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({
@@ -47,19 +46,21 @@ export const EmptyState: React.FC<{
   icon: React.ReactNode;
   title: string;
   description?: string;
+  action?: React.ReactNode;
   className?: string;
-}> = ({ icon, title, description, className = '' }) => (
-  <div className={['px-6 py-10 text-center', className].join(' ')}>
-    <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-[13px] bg-black/[0.04] text-black/40 dark:bg-white/[0.06] dark:text-white/40">
+}> = ({ icon, title, description, action, className = '' }) => (
+  <div className={['px-6 py-8 text-center', className].join(' ')}>
+    <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-[11px] bg-[var(--surface-tertiary)] text-[var(--ink-3)]">
       {icon}
     </div>
-    <p className="text-[14px] font-semibold leading-tight tracking-[-0.01em] text-neutral-900 dark:text-white">
+    <p className="text-[14px] font-semibold leading-tight tracking-[-0.01em] text-[var(--ink)]">
       {title}
     </p>
     {description && (
-      <p className="mx-auto mt-1 max-w-sm text-[12.5px] leading-snug tracking-[-0.01em] text-black/45 dark:text-white/45">
+      <p className="mx-auto mt-1 max-w-sm text-[12.5px] leading-snug tracking-[-0.01em] text-[var(--ink-2)]">
         {description}
       </p>
     )}
+    {action && <div className="mt-4 flex justify-center">{action}</div>}
   </div>
 );
