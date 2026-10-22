@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { api } from '@/api/client';
 
@@ -14,42 +14,67 @@ const EdgeDrop: React.FC = () => {
   }, []);
   const [active, setActive] = useState(false);
   const [state, setState] = useState<'ready' | 'sending' | 'done' | 'error'>('ready');
+  const handledDrag = useRef<string | null>(null);
+  const resetTimer = useRef<number | null>(null);
+
+  const handoff = useCallback(async (paths: string[]) => {
+    if (paths.length === 0) return;
+    const fingerprint = paths.join('\u0000');
+    if (handledDrag.current === fingerprint) return;
+    handledDrag.current = fingerprint;
+    setState('sending');
+    try {
+      for (const path of paths) await api.sendTransfer(peerId, path);
+      setState('done');
+    } catch {
+      setState('error');
+    }
+  }, [peerId]);
 
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     getCurrentWindow().onDragDropEvent(event => {
       if (disposed) return;
-      if (event.payload.type === 'enter' || event.payload.type === 'over') {
+      if (event.payload.type === 'enter') {
         setActive(true);
         setState('ready');
+        // Crossing the configured edge is the handoff gesture. Tauri exposes
+        // the real Finder/Explorer paths on `enter`, so the user does not
+        // need to hit a tiny drop target or bring the UniKey window forward.
+        // `drop` remains a fallback, while handledDrag prevents duplicates.
+        void handoff(event.payload.paths);
+        return;
+      }
+      if (event.payload.type === 'over') {
+        setActive(true);
         return;
       }
       if (event.payload.type === 'drop') {
         const paths = event.payload.paths;
-        setState('sending');
-        void (async () => {
-          try {
-            for (const path of paths) await api.sendTransfer(peerId, path);
-            setState('done');
-          } catch {
-            setState('error');
-          } finally {
-            setActive(false);
-          }
-        })();
+        void handoff(paths);
+        setActive(false);
+        if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+        resetTimer.current = window.setTimeout(() => {
+          handledDrag.current = null;
+        }, 750);
         return;
       }
       setActive(false);
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+      resetTimer.current = window.setTimeout(() => {
+        handledDrag.current = null;
+      }, 750);
     }).then(stop => {
       if (disposed) stop();
       else unlisten = stop;
     });
     return () => {
       disposed = true;
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
       unlisten?.();
     };
-  }, [peerId]);
+  }, [handoff]);
 
   const colour = state === 'error'
     ? 'bg-red-500'
@@ -63,7 +88,7 @@ const EdgeDrop: React.FC = () => {
     <main
       aria-label="UniKey screen-edge file handoff"
       className={`h-screen w-screen transition-colors duration-150 ${colour}`}
-      title="Drop files here to hand them to the paired device"
+      title="Drag files to this edge to hand them to the paired device"
     />
   );
 };

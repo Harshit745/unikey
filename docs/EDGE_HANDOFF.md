@@ -2,8 +2,9 @@
 
 UniKey's current experimental edge flow lets a user drag files from any Finder
 or Windows Explorer location to a narrow, always-on-top strip on a configured
-left or right screen edge. Releasing on that strip submits the real local file
-paths to the existing encrypted, paired-device transfer service.
+left or right screen edge. Reaching that edge submits the real local file paths
+to the existing encrypted, paired-device transfer service; the UniKey window
+does not need to be open or focused.
 
 ## Enable it
 
@@ -12,7 +13,8 @@ paths to the existing encrypted, paired-device transfer service.
 2. Keep both daemons online on the same LAN.
 3. Open **Files**, choose the paired target, select the shared left or right
    edge, and choose **Enable edge**.
-4. Drag one or more files to the blue edge strip and release.
+4. Drag one or more files to the blue edge strip. Reaching the strip initiates
+   the handoff; release there to finish the local operating-system gesture.
 5. Treat the transfer as successful only when its status becomes `Verified`.
 
 The receiving daemon writes verified content into its configured UniKey

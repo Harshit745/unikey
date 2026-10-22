@@ -141,7 +141,7 @@ const Files: React.FC = () => {
       setEdgeCaptureEnabled(true);
       setNotice({
         ok: true,
-        text: `Screen-edge handoff enabled on the ${edge}. Drag files to the blue edge strip and release.`,
+        text: `Screen-edge handoff enabled on the ${edge}. Drag files to that screen edge to send them.`,
       });
     } catch (error) {
       setNotice({ ok: false, text: error instanceof Error ? error.message : String(error) });
@@ -250,7 +250,7 @@ const Files: React.FC = () => {
                   Screen-edge handoff
                 </h3>
                 <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--ink-2)]">
-                  Adds a narrow native drop target to one screen edge, so files can be handed off from Finder or Explorer without opening UniKey first.
+                  Adds a narrow native handoff target to one screen edge, so reaching the edge with files from Finder or Explorer starts the transfer without opening UniKey first.
                 </p>
               </div>
               <div className="flex items-end gap-2">
@@ -275,7 +275,7 @@ const Files: React.FC = () => {
               </div>
             </div>
             <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-2)]">
-              Current milestone: release on the edge strip to transfer into the receiving device's configured UniKey folder. Native continuation over arbitrary remote applications is still experimental and is not represented as complete.
+              Current milestone: reaching the edge transfers into the receiving device's configured UniKey folder. Continuing the held drag over arbitrary remote applications still requires native Windows and macOS bridges and is not represented as complete.
             </p>
           </GlassCard>
 
