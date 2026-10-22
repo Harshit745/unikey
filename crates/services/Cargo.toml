@@ -1,0 +1,21 @@
+[package]
+name = "services"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+tokio-util = { workspace = true }
+
+common = { path = "../common" }
+device = { path = "../device" }
+protocol = { path = "../protocol" }
+transport = { path = "../transport" }
+events = { path = "../events" }
+
+[dev-dependencies]
+chrono = { workspace = true }

@@ -1,0 +1,24 @@
+/* ==================================================================
+   global.css — Tailwind v4 entry for the UniKey desktop shell
+   ------------------------------------------------------------------
+   Imports Tailwind, the 3-theme design tokens, and the base layer.
+
+   The `dark:` variant is re-wired for the three-state theme system
+   (matching tokens.css):
+     - `[data-theme="dark"]`  → dark utilities apply (any OS)
+     - System + dark OS       → dark utilities apply via media query
+     - `[data-theme="light"]` → dark utilities stay off (even dark OS)
+   `:where()` keeps specificity at zero so bare (light) utilities win.
+   ================================================================== */
+
+@import "tailwindcss";
+
+@custom-variant dark {
+  &:where(:root[data-theme="dark"] *) { @slot; }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) { @slot; }
+  }
+}
+
+@import "./tokens.css";
+@import "./app.css";

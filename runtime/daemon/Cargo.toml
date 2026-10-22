@@ -1,0 +1,39 @@
+[package]
+name = "daemon"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+tokio-util = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+async-trait = { workspace = true }
+toml = { workspace = true }
+dirs = { workspace = true }
+
+axum = { workspace = true }
+tower-http = { workspace = true }
+socket2 = "0.5"
+tokio-stream = { workspace = true }
+
+common = { path = "../../crates/common" }
+device = { path = "../../crates/device" }
+discovery = { path = "../../crates/discovery" }
+transport = { path = "../../crates/transport" }
+protocol = { path = "../../crates/protocol" }
+services = { path = "../../crates/services" }
+pairing = { path = "../../crates/pairing" }
+clipboard = { path = "../../crates/clipboard" }
+input = { path = "../../crates/input" }
+files = { path = "../../crates/files" }
+crypto = { path = "../../crates/crypto" }
+events = { path = "../../crates/events" }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

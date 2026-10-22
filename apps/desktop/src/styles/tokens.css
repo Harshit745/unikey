@@ -1,0 +1,215 @@
+/* ==================================================================
+   UniKey desktop — design tokens
+   ------------------------------------------------------------------
+   Ported from the app-ui design study (.claude/demo/app-ui/tokens.css),
+   the exact material system from the Glass Settings study: sidebar,
+   top bar, stat cards, glass cards, toggles, chips.
+
+   Three theme states per the Apple design rules:
+     :root (bare)                    → "System" (defaults to light)
+     @media (prefers-color-scheme)   → guarded, follows OS when System
+     :root[data-theme="light|dark"]  → explicit override, wins both ways
+   ================================================================== */
+
+:root {
+  /* Ground */
+  --ground-1: #f5f6fb;
+  --ground-2: #e9ecf5;
+
+  /* Ink */
+  --ink: #14161f;
+  --ink-2: rgba(20, 22, 31, 0.62);
+  --ink-3: rgba(20, 22, 31, 0.4);
+
+  /* Accent */
+  --accent: #5a5ce6;
+  --accent-strong: #4f46e5;
+
+  /* §12 — Glass material */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-solid: rgba(255, 255, 255, 0.94);
+  --glass-border: rgba(255, 255, 255, 0.66);
+  --glass-highlight: rgba(255, 255, 255, 0.78);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78),
+                 0 2px 6px rgba(31, 34, 55, 0.08),
+                 0 24px 60px -16px rgba(31, 34, 55, 0.28);
+
+  /* Brand tile */
+  --brand-bg: #14161f; --brand-fg: #f5f6fb;
+
+  /* Hairlines & hovers */
+  --hairline: rgba(20, 22, 31, 0.08);
+  --row-hover: rgba(20, 22, 31, 0.035);
+
+  /* Sidebar navigation */
+  --nav-hover: rgba(20, 22, 31, 0.05);
+  --nav-pill: rgba(255, 255, 255, 0.72);
+  --nav-pill-shadow: 0 1px 2px rgba(31, 34, 55, 0.07),
+                     0 6px 18px -8px rgba(31, 34, 55, 0.18);
+
+  /* Controls */
+  --sw-off: rgba(0, 0, 0, 0.14);
+  --sw-on: linear-gradient(135deg, #6d7dff, #5a5ce6);
+  --sw-glow: 0 0 14px rgba(99, 102, 241, 0.45);
+  --seg-bg: rgba(20, 22, 31, 0.06);
+  --seg-pill: #ffffff;
+  --seg-pill-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+
+  /* Chips / badges */
+  --chip-bg: rgba(255, 255, 255, 0.45);
+  --chip-border: rgba(255, 255, 255, 0.7);
+  --chip-shadow: 0 1px 2px rgba(31, 34, 55, 0.06);
+
+  /* Fields */
+  --field-bg: rgba(20, 22, 31, 0.05);
+  --field-focus: rgba(90, 92, 230, 0.18);
+
+  /* Functional color — muted green for "connected", per design lang */
+  --ok: #16a34a;
+  --ok-soft: rgba(22, 163, 74, 0.12);
+
+  /* Tinted icon tiles (functional color only) */
+  --blob-opacity: 0.5;
+  --tint-indigo: #5b5fe6; --tint-sky: #0284c7; --tint-teal: #0d9488;
+  --tint-rose: #e11d48; --tint-amber: #d97706; --tint-violet: #7c3aed;
+  --tint-emerald: #059669; --tint-slate: #475569;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-1: #0b0d15;
+    --ground-2: #12141f;
+    --ink: #f3f4f9;
+    --ink-2: rgba(243, 244, 249, 0.66);
+    --ink-3: rgba(243, 244, 249, 0.42);
+    --accent: #8b8cf8;
+
+    --glass-bg: rgba(27, 27, 32, 0.55);
+    --glass-solid: rgba(20, 20, 24, 0.94);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-highlight: rgba(255, 255, 255, 0.14);
+    --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12),
+                   0 24px 60px -16px rgba(0, 0, 0, 0.6);
+
+    --brand-bg: rgba(255, 255, 255, 0.1); --brand-fg: #f3f4f9;
+    --hairline: rgba(255, 255, 255, 0.1);
+    --row-hover: rgba(255, 255, 255, 0.05);
+
+    --nav-hover: rgba(255, 255, 255, 0.06);
+    --nav-pill: rgba(255, 255, 255, 0.13);
+    --nav-pill-shadow: 0 1px 2px rgba(0, 0, 0, 0.3),
+                       0 8px 20px -10px rgba(0, 0, 0, 0.5);
+
+    --sw-off: rgba(255, 255, 255, 0.22);
+    --seg-bg: rgba(255, 255, 255, 0.08);
+    --seg-pill: rgba(255, 255, 255, 0.14);
+    --seg-pill-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+
+    --chip-bg: rgba(255, 255, 255, 0.04);
+    --chip-border: rgba(255, 255, 255, 0.12);
+    --chip-shadow: none;
+
+    --field-bg: rgba(255, 255, 255, 0.07);
+    --field-focus: rgba(139, 140, 248, 0.22);
+
+    --ok: #34d399;
+    --ok-soft: rgba(52, 211, 153, 0.14);
+
+    --blob-opacity: 0.7;
+    --tint-indigo: #a5b4fc; --tint-sky: #7dd3fc; --tint-teal: #5eead4;
+    --tint-rose: #fda4af; --tint-amber: #fcd34d; --tint-violet: #c4b5fd;
+    --tint-emerald: #6ee7b7; --tint-slate: #94a3b8;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground-1: #0b0d15;
+  --ground-2: #12141f;
+  --ink: #f3f4f9;
+  --ink-2: rgba(243, 244, 249, 0.66);
+  --ink-3: rgba(243, 244, 249, 0.42);
+  --accent: #8b8cf8;
+
+  --glass-bg: rgba(27, 27, 32, 0.55);
+  --glass-solid: rgba(20, 20, 24, 0.94);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-highlight: rgba(255, 255, 255, 0.14);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12),
+                 0 24px 60px -16px rgba(0, 0, 0, 0.6);
+
+  --brand-bg: rgba(255, 255, 255, 0.1); --brand-fg: #f3f4f9;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --row-hover: rgba(255, 255, 255, 0.05);
+
+  --nav-hover: rgba(255, 255, 255, 0.06);
+  --nav-pill: rgba(255, 255, 255, 0.13);
+  --nav-pill-shadow: 0 1px 2px rgba(0, 0, 0, 0.3),
+                     0 8px 20px -10px rgba(0, 0, 0, 0.5);
+
+  --sw-off: rgba(255, 255, 255, 0.22);
+  --seg-bg: rgba(255, 255, 255, 0.08);
+  --seg-pill: rgba(255, 255, 255, 0.14);
+  --seg-pill-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+
+  --chip-bg: rgba(255, 255, 255, 0.04);
+  --chip-border: rgba(255, 255, 255, 0.12);
+  --chip-shadow: none;
+
+  --field-bg: rgba(255, 255, 255, 0.07);
+  --field-focus: rgba(139, 140, 248, 0.22);
+
+  --ok: #34d399;
+  --ok-soft: rgba(52, 211, 153, 0.14);
+
+  --blob-opacity: 0.7;
+  --tint-indigo: #a5b4fc; --tint-sky: #7dd3fc; --tint-teal: #5eead4;
+  --tint-rose: #fda4af; --tint-amber: #fcd34d; --tint-violet: #c4b5fd;
+  --tint-emerald: #6ee7b7; --tint-slate: #94a3b8;
+}
+
+:root[data-theme="light"] {
+  --ground-1: #f5f6fb;
+  --ground-2: #e9ecf5;
+  --ink: #14161f;
+  --ink-2: rgba(20, 22, 31, 0.62);
+  --ink-3: rgba(20, 22, 31, 0.4);
+  --accent: #5a5ce6;
+  --accent-strong: #4f46e5;
+
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-solid: rgba(255, 255, 255, 0.94);
+  --glass-border: rgba(255, 255, 255, 0.66);
+  --glass-highlight: rgba(255, 255, 255, 0.78);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78),
+                 0 2px 6px rgba(31, 34, 55, 0.08),
+                 0 24px 60px -16px rgba(31, 34, 55, 0.28);
+
+  --brand-bg: #14161f; --brand-fg: #f5f6fb;
+  --hairline: rgba(20, 22, 31, 0.08);
+  --row-hover: rgba(20, 22, 31, 0.035);
+
+  --nav-hover: rgba(20, 22, 31, 0.05);
+  --nav-pill: rgba(255, 255, 255, 0.72);
+  --nav-pill-shadow: 0 1px 2px rgba(31, 34, 55, 0.07),
+                     0 6px 18px -8px rgba(31, 34, 55, 0.18);
+
+  --sw-off: rgba(0, 0, 0, 0.14);
+  --seg-bg: rgba(20, 22, 31, 0.06);
+  --seg-pill: #ffffff;
+  --seg-pill-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+
+  --chip-bg: rgba(255, 255, 255, 0.45);
+  --chip-border: rgba(255, 255, 255, 0.7);
+  --chip-shadow: 0 1px 2px rgba(31, 34, 55, 0.06);
+
+  --field-bg: rgba(20, 22, 31, 0.05);
+  --field-focus: rgba(90, 92, 230, 0.18);
+
+  --ok: #16a34a;
+  --ok-soft: rgba(22, 163, 74, 0.12);
+
+  --blob-opacity: 0.5;
+  --tint-indigo: #5b5fe6; --tint-sky: #0284c7; --tint-teal: #0d9488;
+  --tint-rose: #e11d48; --tint-amber: #d97706; --tint-violet: #7c3aed;
+  --tint-emerald: #059669; --tint-slate: #475569;
+}

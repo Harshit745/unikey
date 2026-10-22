@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# UniKey — default configuration
+#
+# This file is shipped inside every release folder and copied to the running
+# daemon's `config/` directory. If it is missing or deleted the daemon
+# recreates a default file automatically and never crashes.
+#
+# Ports must be unique; `0` disables a listener. Values here override the
+# built-in defaults from `crates/common`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+schema_version = "1.0"
+
+[daemon]
+# Optional display name. Leave empty to derive from the hostname.
+device_name = ""
+
+[network]
+# Interface the device transport listens on ("0.0.0.0" for all).
+tcp_bind = "0.0.0.0"
+# TCP port used by the device transport.
+tcp_port = 45892
+# UDP port used by discovery beacons.
+discovery_port = 45893
+# Interface discovery beacons are sent on.
+discovery_bind = "0.0.0.0"
+# Localhost port for the HTTP API (the desktop UI connects here).
+api_port = 45895
+
+[logging]
+# One of: trace, debug, info, warn, error.
+level = "info"
+# Rotate logs/latest.log once it exceeds this many bytes (5 MiB).
+max_bytes = 5242880
+# Keep at most this many rotated backups.
+max_backups = 5
+# Write to logs/latest.log in addition to the console.
+file_enabled = true
+
+[services]
+# Toggle individual services. Future modules plug in here.
+clipboard = true
+input = true
+files = true
+pairing = true

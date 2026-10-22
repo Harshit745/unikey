@@ -1,0 +1,26 @@
+[package]
+name = "pairing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+rand_core = { workspace = true }
+async-trait = { workspace = true }
+dirs = { workspace = true }
+chrono = { workspace = true }
+
+common = { path = "../common" }
+device = { path = "../device" }
+protocol = { path = "../protocol" }
+transport = { path = "../transport" }
+services = { path = "../services" }
+
+[dev-dependencies]
+crypto = { path = "../crypto" }
+tokio-util = { workspace = true }

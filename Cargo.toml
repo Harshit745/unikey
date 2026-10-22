@@ -1,0 +1,113 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "runtime/daemon",
+
+    "crates/common",
+    "crates/device",
+    "crates/protocol",
+    "crates/crypto",
+    "crates/discovery",
+    "crates/transport",
+    "crates/services",
+    "crates/pairing",
+    "crates/clipboard",
+    "crates/input",
+    "crates/files",
+    "crates/events",
+]
+
+exclude = [
+    "apps/desktop/src-tauri",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+authors = ["Harshit Sharma"]
+rust-version = "1.85"   # minimum supported version (edition 2024 baseline)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Release profile — tuned for portable, self-contained binaries.
+#
+#   opt-level "z"  → optimize for binary size (the release folder is the
+#                    primary distribution artifact).
+#   lto + codegen-units=1 → fat link-time optimization: better size and
+#                    speed at the cost of slower release builds. Correct
+#                    trade for a pipeline that runs rarely.
+#   strip = true    → remove symbol tables / debuginfo from the binary
+#                    (equivalent to `strip --strip-all`).
+#   panic = "abort" → shrink binary (no unwind tables). The daemon installs a
+#                    panic hook that writes `logs/panic.log` BEFORE abort, so
+#                    crash diagnostics are preserved. See runtime/daemon.
+#
+# NOTE: `panic = "abort"` disables catch_unwind in release, so tests that
+# rely on #[should_panic] must run under the default (dev/test) profile.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+
+tokio = { version = "1", features = ["full"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+uuid = { version = "1", features = ["v4", "serde"] }
+
+chrono = { version = "0.4", features = ["serde"] }
+
+bytes = "1"
+
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+dirs = "6"
+
+hostname = "0.4"
+
+ed25519-dalek = { version = "2.2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+# ── Phase 3 crypto stack ────────────────────────────────────────────────
+# X25519 key agreement (ephemeral key exchange for forward secrecy).
+x25519-dalek = { version = "2.0", features = ["static_secrets", "getrandom"] }
+# ChaCha20-Poly1305 AEAD for all transport frames.
+chacha20poly1305 = "0.10"
+# HKDF-SHA256 for session-key derivation.
+hkdf = "0.12"
+sha2 = "0.10"
+# Constant-time comparisons (key equality, replay checks).
+subtle = "2.5"
+# Wipe secrets from memory when dropped.
+zeroize = { version = "1", features = ["derive"] }
+
+# ── Phase 4/5 platform backends ─────────────────────────────────────────
+# Cross-platform clipboard access (text / HTML / image).
+arboard = "3"
+# Base64 encoding for binary clipboard payloads (images).
+base64 = "0.22"
+# Cross-platform keyboard + mouse injection.
+enigo = "0.2"
+
+parking_lot = "0.12"
+
+async-trait = "0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+axum = "0.7"
+tower-http = { version = "0.6", features = ["cors"] }
+
+# Runtime / config support for the daemon
+toml = "0.8"

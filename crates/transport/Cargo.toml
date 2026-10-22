@@ -1,0 +1,24 @@
+[package]
+name = "transport"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+device = { path = "../device" }
+protocol = { path = "../protocol" }
+crypto = { path = "../crypto" }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+rand_core = { workspace = true }
+events = { path = "../events" }
+
+[dev-dependencies]
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }

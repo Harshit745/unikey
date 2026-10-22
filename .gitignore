@@ -1,0 +1,114 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# UniKey — root .gitignore
+#
+# Categories:
+#   1. Rust build output        (target/)
+#   2. Release / packaging      (release/, *.zip, dist/)
+#   3. Runtime data             (logs/, generated config, keys)
+#   4. Flutter / Dart output    (.dart_tool, build/, generated plugin files)
+#   5. Node / website output    (node_modules/, .next/)
+#   6. Editor / OS files        (.idea/, .vscode/, .DS_Store, etc.)
+#   7. Local secrets & scratch  (.env, *.local, scratch/)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1. Rust
+/target/
+**/target/
+**/*.rs.bk
+
+# Generated Tauri embedding input. Build scripts stage the current platform's
+# release daemon here; never publish a machine-specific binary as source.
+/apps/desktop/src-tauri/unikey-daemon.bin
+
+# 2. Release / packaging
+/release/
+/dist/
+*.zip
+*.tar.gz
+*.tgz
+*.dmg
+*.pkg
+*.msi
+*.exe.manifest
+
+# 3. Runtime data (never commit machine-local state)
+/logs/
+**/logs/
+/config/keys/
+/keys/
+*.log
+panic.log
+
+# 4. Flutter / Dart (desktop & future UI)
+**/.dart_tool/
+**/build/
+**/flutter_ephemeral/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/GeneratedPluginRegistrant.*
+**/generated_plugin_registrant.*
+**/generated_plugins.cmake
+**/ephemeral/
+**/android/.gradle/
+**/android/local.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Pods/
+**/macos/Flutter/ephemeral/
+**/macos/Pods/
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+**/linux/flutter/generated_plugin_registrant.cc
+**/linux/flutter/generated_plugins.cmake
+**/windows/flutter/generated_plugin_registrant.cc
+**/windows/flutter/generated_plugins.cmake
+**/.idea/
+**/*.iml
+**/.metadata
+
+# 5. Node / website
+**/node_modules/
+**/.next/
+**/out/
+**/dist/
+*.tsbuildinfo
+
+# 6. Editor / OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.iml
+.fleet/
+*.code-workspace
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# 7. Local / secrets
+.claude/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+!crates/crypto/keys/**  # keep key fixtures if any are intentional
+scratch/
+tmp/
+*.tmp
+
+# 8. Documentation build output
+docs/_build/

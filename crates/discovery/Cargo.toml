@@ -1,0 +1,22 @@
+[package]
+name = "discovery"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+protocol = { path = "../protocol" }
+transport = { path = "../transport" }
+hostname = "0.4"
+socket2 = "0.5"
+mdns-sd = "0.13"
+common = { path = "../common" }
+device = { path = "../device" }
+
+[dev-dependencies]
+chrono = { workspace = true }

@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# UniKey — Cargo configuration
+#
+# The only project-wide setting today is static linking of the MSVC CRT on
+# Windows so release binaries are fully self-contained.
+#
+# Why this is here (see also docs/TROUBLESHOOTING.md "Windows runtime"):
+#   * Rust `*-pc-windows-msvc` binaries normally link the MSVC C/C++ runtime
+#     (vcruntime140.dll) and the Universal C Runtime (UCRT) dynamically.
+#   * The UCRT ships with Windows 10+, but `vcruntime140.dll` is only present
+#     if the "Visual C++ Redistributable" was installed — not guaranteed on a
+#     clean machine.
+#   * Setting `crt-static` links those libraries INTO the binary, so the
+#     release folder runs on any Windows 10+ machine with zero installers.
+#
+# Trade-off: static CRT slightly increases binary size. This is the exact
+# trade the "copy the folder, double-click" workflow demands.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-Ctarget-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-Ctarget-feature=+crt-static"]

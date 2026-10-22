@@ -1,0 +1,189 @@
+name: UniKey Desktop
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '22'
+  RUST_VERSION: 'stable'
+  DAEMON_PORT: 45895
+
+jobs:
+  # ── macOS build ────────────────────────────────────────────────────────
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
+
+      - name: Install npm dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build daemon
+        run: cargo build --release --bin daemon
+
+      - name: Stage embedded daemon
+        run: cp target/release/daemon apps/desktop/src-tauri/unikey-daemon.bin
+
+      - name: Build desktop app (universal macOS binary)
+        working-directory: apps/desktop
+        run: npx tauri build --target universal-apple-darwin
+
+      - name: Stage downloadable macOS image
+        run: |
+          mkdir -p release-artifacts
+          DMG="$(find apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle -name '*.dmg' -print -quit)"
+          test -n "$DMG"
+          cp "$DMG" release-artifacts/UniKey-macOS-universal.dmg
+
+      - name: Run integration tests
+        working-directory: apps/desktop
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UniKey-macOS-universal
+          path: release-artifacts/UniKey-macOS-universal.dmg
+          retention-days: 30
+
+  # ── Windows build ──────────────────────────────────────────────────────
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Setup Rust (MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
+
+      - name: Install npm dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build daemon (Windows)
+        run: cargo build --release --bin daemon --target x86_64-pc-windows-msvc
+
+      - name: Stage embedded daemon
+        run: cp target/x86_64-pc-windows-msvc/release/daemon.exe apps/desktop/src-tauri/unikey-daemon.bin
+
+      - name: Build desktop app (Windows)
+        working-directory: apps/desktop
+        run: npx tauri build
+
+      - name: Stage downloadable Windows installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "apps/desktop/src-tauri/target" -Recurse -Filter "*-setup.exe" |
+            Select-Object -First 1
+          if (-not $installer) { throw "Tauri did not produce an NSIS installer" }
+          New-Item -ItemType Directory -Path "release-artifacts" -Force | Out-Null
+          Copy-Item $installer.FullName "release-artifacts/UniKey-Windows-x64-Setup.exe"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UniKey-Windows-x64
+          path: release-artifacts/UniKey-Windows-x64-Setup.exe
+          retention-days: 30
+
+  # ── Cross-platform test (daemon only) ─────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime/daemon
+
+      - name: Build daemon
+        run: cargo build --release --bin daemon
+
+      - name: Run daemon tests
+        run: cargo test --release
+
+      - name: Start daemon and verify endpoints
+        run: |
+          ./target/release/daemon &
+          DAEMON_PID=$!
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:${{ env.DAEMON_PORT }}/health >/dev/null 2>&1; then
+              echo "Daemon healthy after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:${{ env.DAEMON_PORT }}/health
+          curl -sf http://127.0.0.1:${{ env.DAEMON_PORT }}/version
+          curl -sf http://127.0.0.1:${{ env.DAEMON_PORT }}/services
+          # Discovery endpoint returns the {success,data,error} envelope.
+          curl -sf http://127.0.0.1:${{ env.DAEMON_PORT }}/api/v1/peers
+          kill $DAEMON_PID || true
+
+  # ── Tagged build → durable, user-facing GitHub Release downloads ─────
+  release:
+    name: Publish desktop installers
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: UniKey-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

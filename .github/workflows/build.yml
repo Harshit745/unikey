@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# UniKey — CI/CD build workflow
+#
+# Runs on every push and pull request; builds all three desktop platforms from
+# the same workspace using the project's own build scripts (no separate CI
+# config to keep in sync). Tagged desktop installers are published by
+# desktop.yml, which avoids two workflows racing to update one GitHub Release.
+#
+# The workflow intentionally makes NO assumptions about project layout beyond
+# the scripts it calls — future platforms/jobs slot in without restructuring.
+# ─────────────────────────────────────────────────────────────────────────────
+name: build
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
+          - name: Linux
+            os: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # The MSVC target links the CRT statically (see .cargo/config.toml),
+      # keeping the release portable without a VC++ redistributable install.
+      - name: Add Windows MSVC target
+        if: matrix.os == 'windows-latest'
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Install zip (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y zip
+
+      - name: Cache Cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run tests
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cargo test --workspace
+          else
+            ./scripts/test.sh
+          fi
+
+      - name: Build portable release + zip
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -ExecutionPolicy Bypass -File ./scripts/build.ps1 -Clean
+          else
+            ./scripts/build.sh --clean
+          fi
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UniKey-${{ matrix.name }}
+          path: |
+            release/UniKey/
+            release/*.zip
+          if-no-files-found: error
+
