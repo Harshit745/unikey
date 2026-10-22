@@ -18,6 +18,8 @@ use crate::transfer::{
     MAX_FILE_SIZE,
 };
 
+const RECEIVER_ACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Default folder for received files when the daemon does not override it.
 fn default_download_dir() -> PathBuf {
     dirs::download_dir().unwrap_or_else(std::env::temp_dir)
@@ -348,15 +350,27 @@ async fn chunk_and_send(
         return;
     }
 
-    manager.mark_completed(transfer_id, false).await;
-    if let Some(bus) = &events {
-        bus.publish(AppEvent::TransferCompleted {
-            transfer_id,
-            filename: metadata.filename.clone(),
-            verified: false,
-        });
-    }
-    tracing::info!("[FILES] Sent {} to {peer_id}", metadata.filename);
+    manager.mark_awaiting_confirmation(transfer_id).await;
+    tracing::info!(
+        "[FILES] Sent all chunks for {} to {peer_id}; awaiting receiver verification",
+        metadata.filename
+    );
+
+    let timeout_manager = manager.clone();
+    let timeout_events = events.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(RECEIVER_ACK_TIMEOUT).await;
+        let error = "receiver did not confirm the file was saved".to_string();
+        if timeout_manager
+            .fail_if_awaiting_confirmation(transfer_id, error.clone())
+            .await
+        {
+            if let Some(bus) = timeout_events {
+                bus.publish(AppEvent::TransferFailed { transfer_id, error });
+            }
+            tracing::warn!("[FILES] Receiver acknowledgement timed out for {transfer_id}");
+        }
+    });
 }
 
 /// Mark a transfer failed and publish the failure event.
@@ -534,7 +548,17 @@ impl Service for FileTransferService {
 
             MessageType::FileAck => {
                 if let Ok(transfer_id) = serde_json::from_slice::<Uuid>(payload) {
+                    let filename = self.manager.get(transfer_id).await.map(|t| t.filename);
                     self.manager.mark_completed(transfer_id, true).await;
+                    if let (Some(filename), Some(bus)) =
+                        (filename, self.events.read().await.clone())
+                    {
+                        bus.publish(AppEvent::TransferCompleted {
+                            transfer_id,
+                            filename,
+                            verified: true,
+                        });
+                    }
                     tracing::info!("[FILES] Peer {peer_id} verified transfer {transfer_id}");
                 }
             }

@@ -807,6 +807,15 @@ async fn send_transfer_handler(
     State(state): State<ApiState>,
     Json(req): Json<SendTransferRequest>,
 ) -> Json<ApiResponse<Uuid>> {
+    if !state
+        .pairing_service
+        .is_current_session_trusted(&req.peer_id)
+        .await
+    {
+        return ApiResponse::err(
+            "File transfer requires an active session whose identity was verified by pairing",
+        );
+    }
     let transfer_id = match state
         .files_service
         .send_file(&req.peer_id, std::path::Path::new(&req.path))

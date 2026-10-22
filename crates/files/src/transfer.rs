@@ -32,6 +32,9 @@ pub enum TransferStatus {
     Queued,
     /// At least one chunk transferred.
     InProgress,
+    /// Sender has written every chunk and is waiting for the receiver to
+    /// persist and checksum the file. This is deliberately not success.
+    AwaitingConfirmation,
     /// All chunks transferred and integrity verified.
     Completed,
     /// Acknowledged by the remote peer as verified.
@@ -272,7 +275,17 @@ impl TransferManager {
         Ok(None)
     }
 
-    /// Mark a transfer as completed (all chunks sent, or integrity verified).
+    /// Mark a sender as waiting for the receiver's integrity acknowledgement.
+    pub async fn mark_awaiting_confirmation(&self, transfer_id: Uuid) {
+        let mut map = self.inner.lock().await;
+        if let Some(state) = map.get_mut(&transfer_id) {
+            state.status = TransferStatus::AwaitingConfirmation;
+            state.transferred = state.metadata.total_size;
+        }
+    }
+
+    /// Mark a transfer as completed (receiver persisted it, or sender received
+    /// the receiver's integrity acknowledgement).
     pub async fn mark_completed(&self, transfer_id: Uuid, verified: bool) {
         let mut map = self.inner.lock().await;
         if let Some(state) = map.get_mut(&transfer_id) {
@@ -284,6 +297,22 @@ impl TransferManager {
             state.completed_at = Some(Utc::now());
             state.transferred = state.metadata.total_size;
         }
+    }
+
+    /// Fail a sender only if it is still waiting for acknowledgement. Returns
+    /// false when an ACK, cancellation, or another terminal state won the race.
+    pub async fn fail_if_awaiting_confirmation(&self, transfer_id: Uuid, error: String) -> bool {
+        let mut map = self.inner.lock().await;
+        let Some(state) = map.get_mut(&transfer_id) else {
+            return false;
+        };
+        if state.status != TransferStatus::AwaitingConfirmation {
+            return false;
+        }
+        state.status = TransferStatus::Failed;
+        state.error = Some(error);
+        state.completed_at = Some(Utc::now());
+        true
     }
 
     /// Mark a transfer as failed, recording the reason.
@@ -481,7 +510,9 @@ mod tests {
         let mgr = TransferManager::new();
         let id = Uuid::new_v4();
         let peer = Uuid::new_v4();
-        mgr.register_incoming(peer, &metadata(id, 100)).await.unwrap();
+        mgr.register_incoming(peer, &metadata(id, 100))
+            .await
+            .unwrap();
         assert!(mgr.cancel(id).await);
         // After cancel, a late chunk is treated as an unknown transfer.
         let chunk = FileChunk {
@@ -492,14 +523,55 @@ mod tests {
         assert!(mgr.receive_chunk(&peer, &chunk).await.is_err());
     }
 
+    #[tokio::test]
+    async fn sender_is_not_successful_until_receiver_confirms() {
+        let mgr = TransferManager::new();
+        let id = Uuid::new_v4();
+        let peer = Uuid::new_v4();
+        mgr.register_outgoing(peer, metadata(id, 100)).await.unwrap();
+
+        mgr.record_sent(id, 100).await;
+        mgr.mark_awaiting_confirmation(id).await;
+        assert_eq!(
+            mgr.get(id).await.unwrap().status,
+            TransferStatus::AwaitingConfirmation
+        );
+
+        mgr.mark_completed(id, true).await;
+        assert_eq!(mgr.get(id).await.unwrap().status, TransferStatus::Verified);
+    }
+
+    #[tokio::test]
+    async fn acknowledgement_timeout_does_not_overwrite_verified_transfer() {
+        let mgr = TransferManager::new();
+        let id = Uuid::new_v4();
+        mgr.register_outgoing(Uuid::new_v4(), metadata(id, 100))
+            .await
+            .unwrap();
+        mgr.mark_awaiting_confirmation(id).await;
+        mgr.mark_completed(id, true).await;
+
+        assert!(
+            !mgr.fail_if_awaiting_confirmation(id, "late timeout".into())
+                .await
+        );
+        assert_eq!(mgr.get(id).await.unwrap().status, TransferStatus::Verified);
+    }
+
     #[test]
     fn sanitizes_hostile_filenames() {
         assert_eq!(sanitize_filename("report.pdf"), Some("report.pdf".into()));
-        assert_eq!(sanitize_filename("  spaced.txt "), Some("spaced.txt".into()));
+        assert_eq!(
+            sanitize_filename("  spaced.txt "),
+            Some("spaced.txt".into())
+        );
         // Traversal attempts — leading-dot names (incl. "..") are rejected.
         assert_eq!(sanitize_filename("../etc/passwd"), None);
         assert_eq!(sanitize_filename(".."), None);
-        assert_eq!(sanitize_filename("/absolute/path"), Some("_absolute_path".into()));
+        assert_eq!(
+            sanitize_filename("/absolute/path"),
+            Some("_absolute_path".into())
+        );
         // A name that merely *contains* a separator is neutralized, not rejected.
         assert_eq!(sanitize_filename("a/../b.txt"), Some("a_.._b.txt".into()));
         // Hidden files and controls.

@@ -14,6 +14,9 @@
 | Clipboard sync (text / HTML / images, loop prevention, history) | 🧪 Unit-tested; physical-device journey unverified | `clipboard` |
 | Keyboard & mouse forwarding | 🧪 Unit-tested; OS permissions/device journey unverified | `input` |
 | Chunked file transfer (SHA-256, resume, cancel, progress) | ✅ Core transfer verified locally; resume/cancel journey unverified | `files` |
+| Native Files-page drag/drop | ✅ Implemented and locally UI-verified on macOS; Windows interaction unverified | `apps/desktop` |
+| Screen-edge file handoff strip | 🧪 Implemented for edge release; physical Windows↔macOS verification pending | `apps/desktop` |
+| Continuous cross-OS drag into arbitrary remote apps | 📋 Requires Windows OLE + macOS AppKit file-promise bridges | platform-native modules |
 | Live event system (EventBus + SSE) | ✅ Done | `events` |
 | HTTP API + OpenAPI | ✅ Done | `runtime/daemon` |
 | Config with live-swap (`PUT /api/v1/config`) | ✅ Done | `runtime/daemon` |

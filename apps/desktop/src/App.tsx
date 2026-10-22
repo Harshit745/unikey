@@ -14,6 +14,7 @@ const Files     = lazy(() => import('@/pages/Files'));
 const Settings  = lazy(() => import('@/pages/Settings'));
 const Logs      = lazy(() => import('@/pages/Logs'));
 const About     = lazy(() => import('@/pages/About'));
+const EdgeDrop  = lazy(() => import('@/pages/EdgeDrop'));
 
 const Spinner = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
@@ -27,6 +28,7 @@ const App: React.FC = () => (
     <AppearanceProvider>
     <HashRouter>
       <Routes>
+        <Route path="/edge-drop" element={<Suspense fallback={null}><EdgeDrop /></Suspense>} />
         <Route element={<Layout />}>
           <Route index element={<Suspense fallback={<Spinner />}><Dashboard /></Suspense>} />
           <Route path="/devices"  element={<Suspense fallback={<Spinner />}><Devices   /></Suspense>} />

@@ -125,11 +125,11 @@ function describeEvent(env: Envelope): { icon: React.ReactNode; tint: string; te
 
 /** Transfer status → Badge tone. */
 const transferTone = (status: string) =>
-  status === 'Completed'
+  status === 'Completed' || status === 'Verified'
     ? 'success'
     : status === 'Failed' || status === 'Cancelled'
       ? 'error'
-      : status === 'InProgress' || status === 'Queued'
+      : status === 'InProgress' || status === 'Queued' || status === 'AwaitingConfirmation'
         ? 'accent'
         : 'neutral';
 
@@ -159,7 +159,9 @@ const Dashboard: React.FC = () => {
   const running = services?.services.filter(s => s.status === 'running').length ?? 0;
   const total = services?.services.length ?? 0;
   const sessionCount = sessions?.length ?? 0;
-  const activeTransfers = transfers?.filter(t => t.status === 'InProgress' || t.status === 'Queued').length ?? 0;
+  const activeTransfers = transfers?.filter(t =>
+    t.status === 'InProgress' || t.status === 'Queued' || t.status === 'AwaitingConfirmation'
+  ).length ?? 0;
 
   const cardTitle = 'px-4 pt-4 pb-3 text-[14px] font-semibold leading-tight tracking-[-0.015em] text-[var(--ink)]';
   const muted = 'px-4 pb-4 text-[12.5px] text-[var(--ink-2)]';

@@ -1,15 +1,18 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
+import { useNavigate } from 'react-router-dom';
 import { useDaemon } from '@/context/DaemonContext';
 import { usePoll } from '@/hooks/usePoll';
 import { api } from '@/api/client';
-import type { TransferInfo, PeerInfo } from '@/api/types';
+import type { TransferInfo, SessionInfo, TrustedDevice } from '@/api/types';
 import { Placeholder } from '@/components/Placeholder';
 import { GlassCard } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Field, TextInput, Select, EmptyState } from '@/components/ui/controls';
 import { Table, Th, Td, Tr } from '@/components/ui/table';
-import { FolderUp, Send, RefreshCw, X } from 'lucide-react';
+import { FolderUp, Send, RefreshCw, X, MoveRight, ShieldCheck } from 'lucide-react';
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -21,35 +24,100 @@ function formatBytes(n: number): string {
 }
 
 const statusTone = (status: string) =>
-  status === 'Completed' ? 'success'
+  status === 'Completed' || status === 'Verified' ? 'success'
     : status === 'Failed' || status === 'Cancelled' ? 'error'
-    : status === 'Queued' || status === 'InProgress' ? 'accent'
+    : status === 'Queued' || status === 'InProgress' || status === 'AwaitingConfirmation' ? 'accent'
     : 'neutral';
 
 const Files: React.FC = () => {
+  const navigate = useNavigate();
   const { daemonReachable } = useDaemon();
   const { data: transfers, refetch: refetchTransfers } = usePoll<TransferInfo[]>(api.transfers, 2000);
-  const { data: peers } = usePoll<PeerInfo[]>(api.peers, 4000);
+  const { data: sessions } = usePoll<SessionInfo[]>(api.sessions, 4000);
+  const { data: trustedDevices } = usePoll<TrustedDevice[]>(api.trustedDevices, 4000);
   const [peerId, setPeerId] = useState('');
   const [path, setPath] = useState('');
   const [sending, setSending] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [edge, setEdge] = useState<'left' | 'right'>('right');
+  const [edgeCaptureEnabled, setEdgeCaptureEnabled] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const doSend = useCallback(async () => {
-    if (!peerId || !path) return;
+  const trustedIds = useMemo(
+    () => new Set((trustedDevices ?? []).map(device => device.id)),
+    [trustedDevices],
+  );
+
+  // A transport session alone is not authorization. Only paired/trusted
+  // devices may be offered as file destinations.
+  const targetPeers = useMemo(() => {
+    return (sessions ?? [])
+      .filter(session => trustedIds.has(session.peer_id))
+      .map(session => ({ id: session.peer_id, name: session.peer_name, platform: session.platform }));
+  }, [sessions, trustedIds]);
+
+  useEffect(() => {
+    if (!peerId && targetPeers.length === 1) setPeerId(targetPeers[0].id);
+    if (peerId && !targetPeers.some(peer => peer.id === peerId)) setPeerId('');
+  }, [peerId, targetPeers]);
+
+  const sendPaths = useCallback(async (paths: string[]) => {
+    if (!peerId || paths.length === 0) return;
     setSending(true);
     setNotice(null);
     try {
-      const id = await api.sendTransfer(peerId, path);
-      setNotice({ ok: true, text: `Transfer queued (${id.slice(0, 8)}…)` });
+      for (const filePath of paths) await api.sendTransfer(peerId, filePath);
+      setNotice({
+        ok: true,
+        text: `${paths.length} file${paths.length === 1 ? '' : 's'} sent; waiting for receiver verification.`,
+      });
       setPath('');
       refetchTransfers();
     } catch (e: any) {
       setNotice({ ok: false, text: e?.message ?? 'Send failed' });
     } finally {
       setSending(false);
+      setDragActive(false);
     }
-  }, [peerId, path, refetchTransfers]);
+  }, [peerId, refetchTransfers]);
+
+  const doSend = useCallback(async () => {
+    if (!peerId || !path) return;
+    setSending(true);
+    setNotice(null);
+    try {
+      await sendPaths([path]);
+    } catch (e: any) {
+      setNotice({ ok: false, text: e?.message ?? 'Send failed' });
+    } finally {
+      setSending(false);
+    }
+  }, [peerId, path, sendPaths]);
+
+  useEffect(() => {
+    if (!daemonReachable) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow().onDragDropEvent(event => {
+      if (disposed) return;
+      if (event.payload.type === 'enter' || event.payload.type === 'over') {
+        setDragActive(true);
+      } else if (event.payload.type === 'drop') {
+        void sendPaths(event.payload.paths);
+      } else {
+        setDragActive(false);
+      }
+    }).then(stop => {
+      if (disposed) stop();
+      else unlisten = stop;
+    }).catch(error => {
+      setNotice({ ok: false, text: `Native file drop is unavailable: ${String(error)}` });
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [daemonReachable, sendPaths]);
 
   const doCancel = useCallback(async (transferId: string) => {
     try {
@@ -60,12 +128,29 @@ const Files: React.FC = () => {
     }
   }, [refetchTransfers]);
 
-  // Sessions are the only valid send targets; fall back to online peers.
-  const { data: sessions } = usePoll<import('@/api/types').SessionInfo[]>(api.sessions, 4000);
-  const targetPeers =
-    sessions && sessions.length > 0
-      ? sessions.map(s => ({ id: s.peer_id, name: s.peer_name, platform: s.platform }))
-      : (peers ?? []).filter(p => p.online).map(p => ({ id: p.id, name: p.name, platform: p.platform }));
+  const toggleEdgeCapture = useCallback(async () => {
+    setNotice(null);
+    try {
+      if (edgeCaptureEnabled) {
+        await invoke('edge_capture_stop');
+        setEdgeCaptureEnabled(false);
+        return;
+      }
+      if (!peerId) throw new Error('Select a paired, connected target first');
+      await invoke('edge_capture_start', { peerId, edge });
+      setEdgeCaptureEnabled(true);
+      setNotice({
+        ok: true,
+        text: `Screen-edge handoff enabled on the ${edge}. Drag files to the blue edge strip and release.`,
+      });
+    } catch (error) {
+      setNotice({ ok: false, text: error instanceof Error ? error.message : String(error) });
+    }
+  }, [edge, edgeCaptureEnabled, peerId]);
+
+  useEffect(() => () => {
+    if (edgeCaptureEnabled) void invoke('edge_capture_stop');
+  }, [edgeCaptureEnabled]);
 
   return (
     <>
@@ -113,9 +198,18 @@ const Files: React.FC = () => {
               </Button>
             </div>
             {targetPeers.length === 0 && (
-              <p className="mt-3 text-[12px] text-black/45 dark:text-white/45">
-                No active session or online peer — pair and connect a device first.
-              </p>
+              <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-4">
+                <div>
+                  <p className="text-[13px] font-medium text-[var(--ink)]">Pair before transferring</p>
+                  <p className="mt-1 text-[12px] text-[var(--ink-2)]">
+                    A network connection alone cannot receive files. Pair the device to authorize encrypted transfers.
+                  </p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate('/pairing')}>
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Pair device
+                </Button>
+              </div>
             )}
             {notice && (
               <p
@@ -126,6 +220,63 @@ const Files: React.FC = () => {
                 {notice.text}
               </p>
             )}
+          </GlassCard>
+
+          <GlassCard
+            className={`relative overflow-hidden border-2 border-dashed p-8 text-center transition-colors ${
+              dragActive
+                ? 'border-blue-500 bg-blue-500/[0.08]'
+                : 'border-black/10 bg-transparent dark:border-white/12'
+            }`}
+          >
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-300">
+              {dragActive ? <MoveRight className="h-5 w-5" /> : <FolderUp className="h-5 w-5" />}
+            </div>
+            <h3 className="mt-3 text-[14px] font-semibold text-[var(--ink)]">
+              {dragActive ? 'Release to send' : 'Drag files here'}
+            </h3>
+            <p className="mx-auto mt-1 max-w-md text-[12.5px] leading-relaxed text-[var(--ink-2)]">
+              {peerId
+                ? 'Drop files from Finder or Explorer. UniKey will report success only after the other device saves and verifies them.'
+                : 'Select a paired, connected target device before dropping files.'}
+            </p>
+            {sending && <p className="mt-3 text-[12px] font-medium text-blue-600 dark:text-blue-300">Preparing transfer…</p>}
+          </GlassCard>
+
+          <GlassCard className="p-6">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+              <div className="max-w-xl">
+                <h3 className="text-[15px] font-semibold leading-tight tracking-[-0.02em] text-[var(--ink)]">
+                  Screen-edge handoff
+                </h3>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--ink-2)]">
+                  Adds a narrow native drop target to one screen edge, so files can be handed off from Finder or Explorer without opening UniKey first.
+                </p>
+              </div>
+              <div className="flex items-end gap-2">
+                <Field label="Shared edge">
+                  <Select
+                    value={edge}
+                    onChange={event => setEdge(event.target.value as 'left' | 'right')}
+                    disabled={edgeCaptureEnabled}
+                  >
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                  </Select>
+                </Field>
+                <Button
+                  variant={edgeCaptureEnabled ? 'secondary' : 'primary'}
+                  onClick={toggleEdgeCapture}
+                  disabled={!edgeCaptureEnabled && !peerId}
+                >
+                  <MoveRight className="h-4 w-4" />
+                  {edgeCaptureEnabled ? 'Disable edge' : 'Enable edge'}
+                </Button>
+              </div>
+            </div>
+            <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--ink-2)]">
+              Current milestone: release on the edge strip to transfer into the receiving device's configured UniKey folder. Native continuation over arbitrary remote applications is still experimental and is not represented as complete.
+            </p>
           </GlassCard>
 
           <GlassCard className="p-0">
@@ -167,7 +318,7 @@ const Files: React.FC = () => {
                         {t.filename}
                       </Td>
                       <Td className="text-black/55 dark:text-white/55">
-                        {t.direction === 'send' ? '→ Send' : '← Receive'}
+                        {t.direction === 'Send' ? '→ Send' : '← Receive'}
                       </Td>
                       <Td className="whitespace-nowrap font-mono text-[12px] text-black/45 dark:text-white/45">
                         {formatBytes(t.transferred)} / {formatBytes(t.total_size)}
@@ -186,7 +337,7 @@ const Files: React.FC = () => {
                         </Badge>
                       </Td>
                       <Td>
-                        {(t.status === 'Queued' || t.status === 'InProgress') && (
+                        {(t.status === 'Queued' || t.status === 'InProgress' || t.status === 'AwaitingConfirmation') && (
                           <Button variant="secondary" size="sm" onClick={() => doCancel(t.transfer_id)}>
                             <X className="h-3.5 w-3.5" />
                             Cancel

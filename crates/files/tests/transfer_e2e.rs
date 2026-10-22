@@ -55,26 +55,31 @@ async fn sends_a_file_over_the_wire_end_to_end() {
     let (bob_identity, bob_key) = test_identity("bob");
     let alice_sessions = SessionManager::new();
     let bob_sessions = SessionManager::new();
-    let (inbound_tx, mut inbound_rx) =
+    let (alice_inbound_tx, mut alice_inbound_rx) =
+        tokio::sync::mpsc::channel::<(uuid::Uuid, Packet)>(256);
+    let (bob_inbound_tx, mut bob_inbound_rx) =
         tokio::sync::mpsc::channel::<(uuid::Uuid, Packet)>(256);
     let alice_conn = ConnectionManager::new(
         alice_identity.clone(),
         alice_key,
         alice_sessions.clone(),
-        None,
+        Some(alice_inbound_tx),
     );
     let bob_conn = ConnectionManager::new(
         bob_identity.clone(),
         bob_key,
         bob_sessions.clone(),
-        Some(inbound_tx),
+        Some(bob_inbound_tx),
     );
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
     let bob_handle = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("accept");
-        bob_conn.handle_incoming(stream).await.expect("bob handshake");
+        bob_conn
+            .handle_incoming(stream)
+            .await
+            .expect("bob handshake");
     });
     alice_conn
         .connect_to_peer(addr)
@@ -89,8 +94,10 @@ async fn sends_a_file_over_the_wire_end_to_end() {
     // ── Services on both sides ─────────────────────────────────────────────
     let root = temp_dir("happy");
     let bob_downloads = root.join("downloads");
-    let alice_files = FileTransferService::new();
-    let bob_files = FileTransferService::with_download_dir(bob_downloads.clone());
+    let alice_files = std::sync::Arc::new(FileTransferService::new());
+    let bob_files = std::sync::Arc::new(FileTransferService::with_download_dir(
+        bob_downloads.clone(),
+    ));
 
     let shutdown = CancellationToken::new();
     alice_files
@@ -112,15 +119,27 @@ async fn sends_a_file_over_the_wire_end_to_end() {
 
     // Route every inbound packet on Bob to his file service (daemon router
     // behavior: untrusted gate omitted — these peers are already trusted).
-    let bob_files_arc = std::sync::Arc::new(bob_files);
-    let router_bob = bob_files_arc.clone();
-    let router = tokio::spawn(async move {
-        while let Some((peer_id, packet)) = inbound_rx.recv().await {
+    let router_bob = bob_files.clone();
+    let bob_router = tokio::spawn(async move {
+        while let Some((peer_id, packet)) = bob_inbound_rx.recv().await {
             if let Err(e) = router_bob
                 .handle_packet(&peer_id, packet.message_type, &packet.payload)
                 .await
             {
                 eprintln!("[TEST:router] error: {e}");
+            }
+        }
+    });
+    // Route Bob's FileAck back to Alice as the real daemon does. Without this
+    // reverse route a sender must never report success.
+    let router_alice = alice_files.clone();
+    let alice_router = tokio::spawn(async move {
+        while let Some((peer_id, packet)) = alice_inbound_rx.recv().await {
+            if let Err(e) = router_alice
+                .handle_packet(&peer_id, packet.message_type, &packet.payload)
+                .await
+            {
+                eprintln!("[TEST:alice-router] error: {e}");
             }
         }
     });
@@ -140,7 +159,7 @@ async fn sends_a_file_over_the_wire_end_to_end() {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     let mut final_status = None;
     while tokio::time::Instant::now() < deadline {
-        if let Some(info) = bob_files_arc.get(transfer_id).await {
+        if let Some(info) = bob_files.get(transfer_id).await {
             final_status = Some(info.status);
             if matches!(
                 info.status,
@@ -168,13 +187,11 @@ async fn sends_a_file_over_the_wire_end_to_end() {
 
     // Sender also reports it finished.
     let sender_info = alice_files.get(transfer_id).await.expect("sender info");
-    assert!(matches!(
-        sender_info.status,
-        TransferStatus::Completed | TransferStatus::Verified
-    ));
+    assert!(matches!(sender_info.status, TransferStatus::Verified));
 
     shutdown.cancel();
-    router.abort();
+    bob_router.abort();
+    alice_router.abort();
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -201,5 +218,8 @@ async fn receiver_rejects_oversized_metadata() {
         .await
         .expect("rejects without erroring");
 
-    assert!(bob_files.get(meta.transfer_id).await.is_none(), "not registered");
+    assert!(
+        bob_files.get(meta.transfer_id).await.is_none(),
+        "not registered"
+    );
 }

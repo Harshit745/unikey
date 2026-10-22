@@ -60,6 +60,8 @@ pub fn run() {
             daemon_start,
             daemon_status,
             runtime_info,
+            edge_capture_start,
+            edge_capture_stop,
         ])
         .setup(|app| {
             setup_tray(app)?;
@@ -184,6 +186,71 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = w.unminimize();
         let _ = w.set_focus();
     }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ScreenEdge {
+    Left,
+    Right,
+}
+
+/// Create a narrow native drop target on a physical screen edge. Files can be
+/// dragged here from Finder/Explorer without first opening the UniKey window.
+/// The edge page forwards the dropped paths to the daemon for the selected,
+/// already-paired peer.
+#[tauri::command]
+async fn edge_capture_start(
+    app: tauri::AppHandle,
+    peer_id: String,
+    edge: ScreenEdge,
+) -> Result<(), String> {
+    uuid::Uuid::parse_str(&peer_id).map_err(|_| "invalid peer id".to_string())?;
+
+    if let Some(existing) = app.get_webview_window("edge-drop") {
+        existing.close().map_err(|e| e.to_string())?;
+    }
+
+    let monitor = app
+        .primary_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no primary monitor available".to_string())?;
+    let scale = monitor.scale_factor();
+    let size = monitor.size().to_logical::<f64>(scale);
+    let origin = monitor.position().to_logical::<f64>(scale);
+    let strip_width = 18.0;
+    let x = match edge {
+        ScreenEdge::Left => origin.x,
+        ScreenEdge::Right => origin.x + size.width - strip_width,
+    };
+    let url = format!("index.html#/edge-drop?peer={peer_id}");
+
+    tauri::WebviewWindowBuilder::new(&app, "edge-drop", tauri::WebviewUrl::App(url.into()))
+        .title("UniKey edge handoff")
+        .position(x, origin.y)
+        .inner_size(strip_width, size.height)
+        .decorations(false)
+        .resizable(false)
+        .minimizable(false)
+        .maximizable(false)
+        .closable(false)
+        .focused(false)
+        .always_on_top(true)
+        .visible_on_all_workspaces(true)
+        .skip_taskbar(true)
+        .shadow(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn edge_capture_stop(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("edge-drop") {
+        window.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 // ── Tauri commands (called from the React UI via `invoke`) ─────────────

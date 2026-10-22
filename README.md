@@ -17,7 +17,9 @@ UniKey connects all your devices into a shared workspace with:
 - 🖱️ **Universal Input (experimental)** — implemented and unit-tested; real OS
   permissions and cross-device behaviour remain unverified
 - 📁 **P2P File Transfer (MVP)** — verified between two local daemon instances
-- 🎯 **Edge Switching (planned demo work)** — not part of the verified MVP path
+- 🎯 **Screen-edge file handoff (experimental)** — native left/right edge drop
+  target implemented; continuous drag continuation over arbitrary applications
+  on the receiving OS is still planned native-platform work
 - 🔐 **E2E Encrypted** — Ed25519 identity, X25519 key agreement, ChaCha20-Poly1305
   sessions, replay protection, zero mandatory cloud dependencies
 
@@ -60,6 +62,9 @@ pairing, and services, plus an **HTTP API** on localhost that the desktop UI
   genuine Windows runner and smoke-tests install, packaged-daemon startup,
   graceful exit, and uninstall. Physical cross-device Windows behavior still
   requires the separate laptop checklist.
+- **Truthful transfer completion** — a sender remains at
+  `AwaitingConfirmation` until the receiver persists, hashes, and acknowledges
+  the file; missing acknowledgement becomes a visible failure.
 
 ---
 

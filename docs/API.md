@@ -67,9 +67,14 @@ Pairing sessions are short-lived (`expires_in` seconds) and rate-limited, so a `
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/transfers` | Transfer list with status + progress |
-| POST | `/api/v1/transfers/send` | Send a file → body `{ peer_id, path }`, returns `transfer_id` |
+| GET | `/api/v1/transfers` | Transfer list with status + progress; sender success requires receiver acknowledgement |
+| POST | `/api/v1/transfers/send` | Send a file to an actively paired/key-pinned peer → body `{ peer_id, path }`, returns `transfer_id` |
 | POST | `/api/v1/transfers/cancel` | Cancel a transfer → body `{ transfer_id }` |
+
+Outgoing transfers move through `Queued` → `InProgress` →
+`AwaitingConfirmation` → `Verified`. Writing all bytes to the transport is not
+reported as success. If the receiver does not confirm that it persisted and
+SHA-256-verified the file within 15 seconds, the sender reports `Failed`.
 
 ### Keyboard & mouse forwarding
 

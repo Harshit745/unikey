@@ -28,6 +28,7 @@ serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["time", "net", "io-util", "macros", "rt"] }
 dirs = "6"
+uuid = "1"
 
 [lib]
 name = "unikey_desktop_lib"
