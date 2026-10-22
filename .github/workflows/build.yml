@@ -49,9 +49,9 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: rustup target add x86_64-pc-windows-msvc
 
-      - name: Install zip (Linux)
+      - name: Install Linux native dependencies
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y zip
+        run: sudo apt-get update && sudo apt-get install -y libxdo-dev zip
 
       - name: Cache Cargo registry & build
         uses: actions/cache@v4
@@ -63,21 +63,21 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Run tests
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cargo test --workspace
-          else
-            ./scripts/test.sh
-          fi
+      - name: Run tests (Windows)
+        if: matrix.os == 'windows-latest'
+        run: cargo test --workspace
 
-      - name: Build portable release + zip
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            powershell -ExecutionPolicy Bypass -File ./scripts/build.ps1 -Clean
-          else
-            ./scripts/build.sh --clean
-          fi
+      - name: Run tests (macOS and Linux)
+        if: matrix.os != 'windows-latest'
+        run: ./scripts/test.sh
+
+      - name: Build portable release + zip (Windows)
+        if: matrix.os == 'windows-latest'
+        run: ./scripts/build.ps1 -Clean
+
+      - name: Build portable release + zip (macOS and Linux)
+        if: matrix.os != 'windows-latest'
+        run: ./scripts/build.sh --clean
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
