@@ -8,8 +8,7 @@ param(
     [string]$InstallerPath,
     [string]$InstallDir = (Join-Path $env:RUNNER_TEMP "UniKey-Installer-Smoke"),
     [string]$ExpectedCommit,
-    [string]$ExpectedDaemonPath,
-    [string]$ExpectedAppPath
+    [string]$ExpectedDaemonPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +21,6 @@ if (Get-NetTCPConnection -LocalPort 45895 -State Listen -ErrorAction SilentlyCon
     throw "Port 45895 is already occupied; refusing to validate an unrelated daemon"
 }
 if ($ExpectedDaemonPath) { $ExpectedDaemonPath = (Resolve-Path $ExpectedDaemonPath).Path }
-if ($ExpectedAppPath) { $ExpectedAppPath = (Resolve-Path $ExpectedAppPath).Path }
 
 Write-Host "Installing $InstallerPath into $InstallDir"
 $install = Start-Process -FilePath $InstallerPath -ArgumentList "/S", "/D=$InstallDir" -Wait -PassThru
@@ -32,10 +30,9 @@ $AppPath = Join-Path $InstallDir "UniKey.exe"
 $UninstallerPath = Join-Path $InstallDir "uninstall.exe"
 if (-not (Test-Path $AppPath)) { throw "Installed app not found: $AppPath" }
 if (-not (Test-Path $UninstallerPath)) { throw "Uninstaller not found: $UninstallerPath" }
-if ($ExpectedAppPath -and
-    (Get-FileHash $AppPath -Algorithm SHA256).Hash -ne (Get-FileHash $ExpectedAppPath -Algorithm SHA256).Hash) {
-    throw "Installed app does not match the newly built shell (stale installer)"
-}
+# Tauri patches the shell's bundle-type marker for NSIS, then restores the
+# unbundled executable. Their full hashes legitimately differ. Validate the
+# exact embedded daemon bytes and commit below instead of comparing GUI hashes.
 
 $StartMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\UniKey\UniKey.lnk"
 if (-not (Test-Path $StartMenuShortcut)) { throw "Start menu shortcut not found: $StartMenuShortcut" }

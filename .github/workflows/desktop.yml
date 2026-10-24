@@ -150,7 +150,6 @@ jobs:
           -InstallerPath .\release-artifacts\UniKey-Setup.exe
           -ExpectedCommit $env:GITHUB_SHA
           -ExpectedDaemonPath .\target\x86_64-pc-windows-msvc\release\daemon.exe
-          -ExpectedAppPath .\apps\desktop\src-tauri\target\x86_64-pc-windows-msvc\release\UniKey.exe
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

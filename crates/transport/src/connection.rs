@@ -232,6 +232,9 @@ impl ConnectionManager {
         &self,
         stream: &mut TcpStream,
     ) -> Result<(SessionKeys, Hello), Box<dyn std::error::Error + Send + Sync>> {
+        // Cursor/control frames are tiny and time-sensitive. Apply to both
+        // accepted and initiated sockets, before either handshake or data I/O.
+        stream.set_nodelay(true)?;
         let mut ctx = HandshakeContext::new(self.local_identity.clone(), self.local_identity_key.clone());
 
         // Init → SentHello

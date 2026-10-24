@@ -63,10 +63,12 @@ Windows restart, inspect the installed app path and installer checksum before
 reinstalling again.
 
 Windows packaging now selects only the explicit MSVC target's installer, never
-the first cached installer under `target/`. Its smoke test checks the installed
-shell and running daemon against the freshly built binaries by SHA-256, verifies
+the first cached installer under `target/`. Its smoke test checks the running
+daemon against the freshly built daemon by SHA-256, verifies
 the source commit, real parent process, cursor endpoint and safe startup state,
 and refuses to run if another daemon already owns the API port.
+The GUI shell is patched by Tauri with an NSIS bundle-type marker, so its installed
+hash is not compared to the restored, unbundled shell executable.
 
 ## Current boundaries and verification
 
@@ -87,6 +89,28 @@ and refuses to run if another daemon already owns the API port.
 - Physical Mac ↔ Dell cursor testing must be done with the updated build on both
   computers and the Mac permission granted. Packaging CI alone cannot verify feel,
   local cursor suppression, or cross-device physical movement.
+
+## Low-latency path
+
+- Both ends of every authenticated TCP connection use `TCP_NODELAY`, including
+  accepted sockets. Encryption, replay protection and pairing checks are unchanged.
+- The native-to-service queue replaces only adjacent absolute movement for the
+  same device and ownership lease. During a burst the newest position replaces
+  stale positions instead of replaying an ever-older trail. Button down/up,
+  scrolling, peer/lease changes and ownership messages are ordering barriers;
+  they are never coalesced. Discrete-event overflow still restores local control.
+- The Windows hook waits on input messages rather than sleeping between polls.
+  Mouse input wakes it immediately; a short timeout services Escape and recovery.
+- No predictive movement or interpolation is used: these can add latency or
+  produce motion the user did not make. Network quality, display refresh rate
+  and OS injection still affect the physical result. Bulk file traffic shares
+  the same TCP connection and can still cause head-of-line blocking; a dedicated
+  authenticated realtime channel is future work, not a claimed implementation.
+- Reproduce the host-dependent encrypted loopback timing check (not a two-device
+  or mouse-to-photon benchmark):
+  `cargo test -p transport --test secure_session cursor_stream_latency -- --ignored --nocapture`.
+  Unit tests additionally verify a 10,000-move burst collapses to the latest
+  position without losing click/scroll/release ordering.
 
 ### Verified build checkpoint (2026-10-24)
 

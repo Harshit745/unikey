@@ -353,7 +353,18 @@ mod native {
                     if !running {
                         break;
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(4));
+                    // Wake immediately for mouse-hook messages. A sleep(4ms)
+                    // can round up to the Windows scheduler tick (~15.6ms).
+                    // Timeout keeps Escape, shutdown and warp recovery live.
+                    unsafe {
+                        MsgWaitForMultipleObjectsEx(
+                            0,
+                            ptr::null(),
+                            8,
+                            QS_ALLINPUT,
+                            MWMO_INPUTAVAILABLE,
+                        );
+                    }
                 }
                 if hidden {
                     unsafe {

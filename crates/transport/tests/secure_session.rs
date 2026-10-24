@@ -35,6 +35,68 @@ fn manager(name: &str) -> (ConnectionManager, SessionManager, DeviceIdentity) {
     (conn, sessions, identity)
 }
 
+/// A real encrypted TCP stream, not a device/OS injection benchmark. Run with
+/// `cargo test -p transport --test secure_session cursor_stream_latency -- --ignored --nocapture`.
+#[tokio::test]
+#[ignore = "reports host-dependent loopback timing; not a CI latency assertion"]
+async fn cursor_stream_latency() {
+    let (source, sessions, _) = manager("cursor-source");
+    let (identity, key) = test_identity("cursor-receiver");
+    let (tx, mut rx) = tokio::sync::mpsc::channel(512);
+    let receiver = ConnectionManager::new(identity.clone(), key, SessionManager::new(), Some(tx));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let accepted = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        receiver.handle_incoming(stream).await.unwrap();
+    });
+    source.connect_to_peer(addr).await.unwrap();
+    accepted.await.unwrap();
+    let sender = sessions.get_session_sender(&identity.id).await.unwrap();
+    let started = std::time::Instant::now();
+    let producer = tokio::spawn(async move {
+        let mut clock = tokio::time::interval(Duration::from_millis(1));
+        clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        for _ in 0..200 {
+            clock.tick().await;
+            sender.send(Packet {
+                version: 1,
+                message_type: MessageType::InputMouseEvent,
+                payload: (started.elapsed().as_micros() as u64).to_be_bytes().to_vec(),
+            }).await.unwrap();
+        }
+    });
+    let mut micros = Vec::new();
+    for _ in 0..200 {
+        let (_, packet) = tokio::time::timeout(Duration::from_secs(3), rx.recv()).await.unwrap().unwrap();
+        let sent = u64::from_be_bytes(packet.payload.try_into().unwrap());
+        micros.push(started.elapsed().as_micros() as u64 - sent);
+    }
+    producer.await.unwrap();
+    micros.sort_unstable();
+    eprintln!("encrypted loopback, 200 small packets at 1ms: p50={}us p95={}us max={}us", micros[100], micros[190], micros[199]);
+}
+
+#[tokio::test]
+async fn input_sessions_disable_nagle_on_both_sockets() {
+    let (alice, _, _) = manager("alice-low-latency");
+    let (bob, _, _) = manager("bob-low-latency");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let a = tokio::net::TcpStream::connect(listener.local_addr().unwrap()).await.unwrap().into_std().unwrap();
+    let (b, _) = listener.accept().await.unwrap();
+    let b = b.into_std().unwrap();
+    let observe_a = a.try_clone().unwrap();
+    let observe_b = b.try_clone().unwrap();
+    let (a_result, b_result) = tokio::join!(
+        alice.handle_incoming(tokio::net::TcpStream::from_std(a).unwrap()),
+        bob.handle_incoming(tokio::net::TcpStream::from_std(b).unwrap())
+    );
+    a_result.unwrap();
+    b_result.unwrap();
+    assert!(observe_a.nodelay().unwrap());
+    assert!(observe_b.nodelay().unwrap());
+}
+
 #[tokio::test]
 async fn two_peers_establish_encrypted_session() {
     let (alice_conn, alice_sessions, alice_id) = manager("alice");

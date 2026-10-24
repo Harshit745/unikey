@@ -1,12 +1,13 @@
 //! Explicit cursor ownership over the existing authenticated transport.
 //! Native callbacks never await or perform network I/O. A bounded queue hands
-//! work to the async service; saturation immediately returns control locally.
+//! work to the async service. Adjacent absolute moves keep only the latest
+//! position; discrete-event saturation immediately returns control locally.
 use crate::event::MouseEvent;
+pub use crate::outbound::OutboundReceiver;
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
 use uuid::Uuid;
 
 pub const LEASE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -121,11 +122,11 @@ pub(crate) struct State {
 #[derive(Debug, Clone)]
 pub struct CursorController {
     pub(crate) state: Arc<Mutex<State>>,
-    pub(crate) tx: mpsc::Sender<Outbound>,
+    pub(crate) tx: crate::outbound::OutboundSender,
 }
 impl CursorController {
-    pub fn new() -> (Self, mpsc::Receiver<Outbound>) {
-        let (tx, rx) = mpsc::channel(256);
+    pub fn new() -> (Self, OutboundReceiver) {
+        let (tx, rx) = crate::outbound::channel();
         (
             Self {
                 tx,
@@ -361,7 +362,7 @@ impl CursorController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn armed() -> (CursorController, mpsc::Receiver<Outbound>, Uuid) {
+    fn armed() -> (CursorController, OutboundReceiver, Uuid) {
         let (c, rx) = CursorController::new();
         let peer = Uuid::new_v4();
         {
@@ -396,6 +397,28 @@ mod tests {
             dy: 0.
         }));
         assert_eq!(c.status().phase, "entering");
+    }
+    #[test]
+    fn discrete_queue_overflow_restores_local_control() {
+        let (c, _rx, peer) = armed();
+        let lease = Uuid::new_v4();
+        {
+            let mut s = c.state.lock().unwrap();
+            let source = s.source.as_mut().unwrap();
+            source.lease = Some(lease);
+            source.entered = true;
+        }
+        while c
+            .tx
+            .try_send(Outbound {
+                peer,
+                wire: Wire::Heartbeat { lease },
+            })
+            .is_ok()
+        {}
+        assert!(!c.capture(Captured::Down(0)));
+        assert_eq!(c.status().phase, "local");
+        assert!(c.status().error.unwrap().contains("queue full"));
     }
     #[test]
     fn reverse_crossing_restores_local_control() {

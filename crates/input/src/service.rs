@@ -1,5 +1,8 @@
 use crate::{
-    cursor::{CursorController, CursorStatus, Edge, LEASE_TIMEOUT, Outbound, Receiver, Wire},
+    cursor::{
+        CursorController, CursorStatus, Edge, LEASE_TIMEOUT, Outbound, OutboundReceiver, Receiver,
+        Wire,
+    },
     event::{InputAction, KeyEvent, MouseEvent},
     platform::InputInjector,
 };
@@ -13,6 +16,7 @@ use protocol::{MessageType, Packet};
 use services::{Phase, Service, ServiceContext};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+#[cfg(test)]
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -20,7 +24,7 @@ use uuid::Uuid;
 pub struct InputService {
     injector: Arc<dyn InputInjector>,
     pub cursor: CursorController,
-    outbound: Arc<Mutex<Option<mpsc::Receiver<Outbound>>>>,
+    outbound: Arc<Mutex<Option<OutboundReceiver>>>,
     context: Arc<Mutex<Option<ServiceContext>>>,
     pairing: Option<Arc<pairing::PairingService>>,
 }
@@ -410,7 +414,7 @@ impl Service for InputService {
                 loop {
                     tokio::select! {
                         _=ctx.shutdown.cancelled()=>break,
-                        Some(event)=rx.recv()=>{if this.send(event.peer,event.wire).await.is_err(){this.cursor.stop(Some("Cursor connection lost".into()));this.release_receiver();}},
+                        event=rx.recv()=>{if this.send(event.peer,event.wire).await.is_err(){this.cursor.stop(Some("Cursor connection lost".into()));this.release_receiver();}},
                         _=tick.tick()=>this.tick().await,
                     }
                 }
