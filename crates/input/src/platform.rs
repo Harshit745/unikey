@@ -11,6 +11,7 @@ use crate::event::{InputAction, KeyEvent, MouseEvent};
 pub trait InputInjector: Send + Sync + std::fmt::Debug {
     /// Inject a single input action into the local system.
     fn inject(&self, action: &InputAction) -> Result<()>;
+    fn available(&self) -> bool { true }
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +198,7 @@ impl InputInjector for EnigoInjector {
 pub struct StubInputInjector;
 
 impl InputInjector for StubInputInjector {
+    fn available(&self) -> bool { false }
     fn inject(&self, action: &InputAction) -> Result<()> {
         tracing::debug!("[INPUT] Stub inject: {action:?}");
         Ok(())

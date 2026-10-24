@@ -16,6 +16,7 @@
 // launch). Logging still reaches `logs/latest.log`. Debug builds keep the
 // console for development.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![recursion_limit = "256"] // OpenAPI's expanded endpoint schema.
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -427,6 +428,7 @@ async fn run() -> anyhow::Result<()> {
         .clone()
         .unwrap_or_else(|| paths.config_dir().join("downloads"));
     let files_service = Arc::new(FileTransferService::with_download_dir(download_dir));
+    let input_service = InputService::with_pairing(pairing_service.clone());
     let registry = ServiceRegistry::new();
 
     registry
@@ -436,7 +438,7 @@ async fn run() -> anyhow::Result<()> {
         registry.register(Box::new(ArcClipboardService(clipboard_service.clone()))).await;
     }
     if config.services.input {
-        registry.register(Box::new(InputService::new())).await;
+        registry.register(Box::new(input_service.clone())).await;
     }
     if config.services.files {
         registry.register(Box::new(ArcFileTransferService(files_service.clone()))).await;
@@ -513,6 +515,7 @@ async fn run() -> anyhow::Result<()> {
         event_bus: event_bus.clone(),
         clipboard_service: clipboard_service.clone(),
         files_service: files_service.clone(),
+        input_service: input_service.clone(),
     };
 
     let api_router = api::build_router(api_state);

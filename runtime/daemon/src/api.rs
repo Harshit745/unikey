@@ -28,6 +28,7 @@ use protocol::{MessageType, Packet};
 use services::ServiceRegistry;
 use transport::session::SessionManager;
 use transport::connection::ConnectionManager;
+use axum::response::IntoResponse;
 
 // ── API port ───────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ pub struct ApiState {
     pub clipboard_service: Arc<ClipboardService>,
     /// File transfer service (list / send / cancel).
     pub files_service: Arc<FileTransferService>,
+    pub input_service: input::InputService,
 }
 
 // ── Router ─────────────────────────────────────────────────────────────
@@ -67,6 +69,15 @@ pub fn build_router(state: ApiState) -> Router {
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any);
+
+    // Cursor consent must come from our desktop UI or an explicit local CLI,
+    // never from an arbitrary website visiting the loopback API.
+    let cursor_routes = Router::new()
+        .route("/api/v1/input/cursor", get(cursor_status_handler))
+        .route("/api/v1/input/cursor/start", post(cursor_start_handler))
+        .route("/api/v1/input/cursor/stop", post(cursor_stop_handler))
+        .route("/api/v1/input/cursor/receiving", post(cursor_receiving_handler))
+        .route_layer(axum::middleware::from_fn(cursor_origin_guard));
 
     Router::new()
         // ── Discovery / metadata (top-level) ────────────────────────
@@ -89,6 +100,7 @@ pub fn build_router(state: ApiState) -> Router {
         // Input forwarding (keyboard & mouse)
         .route("/api/v1/input/keyboard", post(forward_keyboard_handler))
         .route("/api/v1/input/mouse", post(forward_mouse_handler))
+        .merge(cursor_routes)
         // Pairing
         .route("/api/v1/pairing/generate", post(generate_pairing_handler))
         .route("/api/v1/pairing/status/:session_id", get(pairing_status_handler))
@@ -181,6 +193,10 @@ async fn root_handler() -> Json<serde_json::Value> {
             { "method": "GET",    "path": "/api/v1/peers",              "description": "List discovered LAN peers (name, IP, latency)" },
             { "method": "POST",   "path": "/api/v1/input/keyboard",     "description": "Forward a key event" },
             { "method": "POST",   "path": "/api/v1/input/mouse",        "description": "Forward a mouse event" },
+            { "method": "GET",    "path": "/api/v1/input/cursor",       "description": "Actual shared cursor state" },
+            { "method": "POST",   "path": "/api/v1/input/cursor/start", "description": "Arm a paired peer on a selected screen edge" },
+            { "method": "POST",   "path": "/api/v1/input/cursor/stop",  "description": "Recover local cursor control" },
+            { "method": "POST",   "path": "/api/v1/input/cursor/receiving", "description": "Allow or stop receiving paired cursor control" },
             { "method": "POST",   "path": "/api/v1/pairing/generate",   "description": "Create a pairing session" },
             { "method": "GET",    "path": "/api/v1/pairing/status/:id", "description": "Poll a pairing session" },
             { "method": "POST",   "path": "/api/v1/pairing/initiate",   "description": "Initiate pairing with a peer" },
@@ -660,6 +676,69 @@ async fn initiate_pairing_handler(
 
 // ── Input Forwarding ────────────────────────────────────────────
 
+async fn cursor_origin_guard(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    if let Some(origin) = request.headers().get(axum::http::header::ORIGIN) {
+        let allowed = matches!(origin.to_str(), Ok("tauri://localhost" | "http://tauri.localhost" |
+            "https://tauri.localhost" | "http://localhost:1420" | "http://127.0.0.1:1420"));
+        if !allowed {
+            return axum::http::StatusCode::FORBIDDEN.into_response();
+        }
+    }
+    next.run(request).await
+}
+
+async fn cursor_status_handler(
+    State(state): State<ApiState>,
+) -> Json<ApiResponse<input::cursor::CursorStatus>> {
+    ApiResponse::ok(state.input_service.status())
+}
+#[derive(Deserialize)]
+struct CursorStartRequest {
+    peer_id: Uuid,
+    edge: input::cursor::Edge,
+}
+async fn cursor_start_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<CursorStartRequest>,
+) -> Json<ApiResponse<input::cursor::CursorStatus>> {
+    if !state.config.read().await.services.input {
+        return ApiResponse::err("Input service is disabled");
+    }
+    match state
+        .input_service
+        .start_cursor(req.peer_id, req.edge)
+        .await
+    {
+        Ok(()) => ApiResponse::ok(state.input_service.status()),
+        Err(e) => ApiResponse::err(e.to_string()),
+    }
+}
+async fn cursor_stop_handler(
+    State(state): State<ApiState>,
+) -> Json<ApiResponse<input::cursor::CursorStatus>> {
+    state.input_service.stop_cursor();
+    ApiResponse::ok(state.input_service.status())
+}
+#[derive(Deserialize)]
+struct CursorReceivingRequest {
+    enabled: bool,
+}
+async fn cursor_receiving_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<CursorReceivingRequest>,
+) -> Json<ApiResponse<input::cursor::CursorStatus>> {
+    if !state.config.read().await.services.input {
+        return ApiResponse::err("Input service is disabled");
+    }
+    match state.input_service.set_receiving(req.enabled) {
+        Ok(()) => ApiResponse::ok(state.input_service.status()),
+        Err(e) => ApiResponse::err(e.to_string()),
+    }
+}
+
 #[derive(Deserialize)]
 struct KeyboardForwardRequest {
     /// Target peer UUID.
@@ -677,6 +756,9 @@ async fn forward_keyboard_handler(
     State(state): State<ApiState>,
     Json(req): Json<KeyboardForwardRequest>,
 ) -> Json<ApiResponse<()>> {
+    if !state.pairing_service.is_current_session_trusted(&req.peer_id).await {
+        return ApiResponse::err("Pair and connect the target device first");
+    }
     let event = if req.is_press {
         KeyEvent::KeyDown {
             key: req.key,
@@ -731,6 +813,9 @@ async fn forward_mouse_handler(
     State(state): State<ApiState>,
     Json(req): Json<MouseForwardRequest>,
 ) -> Json<ApiResponse<()>> {
+    if !state.pairing_service.is_current_session_trusted(&req.peer_id).await {
+        return ApiResponse::err("Pair and connect the target device first");
+    }
     let event = match req.action.as_str() {
         "move" => MouseEvent::Move { x: req.x, y: req.y },
         "down" => MouseEvent::ButtonDown {
@@ -896,6 +981,18 @@ async fn openapi_handler() -> Json<serde_json::Value> {
         },
         "servers": [{ "url": "http://127.0.0.1:45895" }],
         "paths": {
+            "/api/v1/input/cursor": {
+                "get": { "summary": "Actual cursor state and capability", "responses": { "200": { "description": "Cursor status" } } }
+            },
+            "/api/v1/input/cursor/start": {
+                "post": { "summary": "Arm shared cursor for peer_id and left/right edge", "responses": { "200": { "description": "Status or explicit error" } } }
+            },
+            "/api/v1/input/cursor/stop": {
+                "post": { "summary": "Recover cursor locally", "responses": { "200": { "description": "Cursor status" } } }
+            },
+            "/api/v1/input/cursor/receiving": {
+                "post": { "summary": "Set explicit cursor receive consent via enabled boolean", "responses": { "200": { "description": "Status or permission error" } } }
+            },
             "/": {
                 "get": { "summary": "Root index with endpoint list", "responses": { "200": { "description": "Endpoint index" } } }
             },
@@ -1028,6 +1125,7 @@ mod tests {
             files_service: Arc::new(FileTransferService::with_download_dir(
                 std::env::temp_dir().join("unikey-test-downloads"),
             )),
+            input_service: input::InputService::new(),
         }
     }
 
@@ -1051,6 +1149,39 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_slice(&bytes).expect("response is valid JSON");
         (status, json)
+    }
+
+    #[tokio::test]
+    async fn cursor_status_starts_local_without_receiving_or_capture() {
+        let (code, body) = get_json("/api/v1/input/cursor").await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(body["data"]["phase"], "local");
+        assert_eq!(body["data"]["receiving_enabled"], false);
+        assert_eq!(body["data"]["capture_running"], false);
+    }
+
+    #[tokio::test]
+    async fn website_cannot_enable_cursor_capture_or_receiving() {
+        let response = build_router(test_state()).oneshot(
+            Request::builder().method("POST").uri("/api/v1/input/cursor/receiving")
+                .header("origin", "https://unrelated.example")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"enabled":true}"#)).unwrap()
+        ).await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn cursor_start_rejects_unpaired_peer_without_native_capture() {
+        let response = build_router(test_state()).oneshot(
+            Request::builder().method("POST").uri("/api/v1/input/cursor/start")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::json!({"peer_id":Uuid::new_v4(),"edge":"right"}).to_string())).unwrap()
+        ).await.unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body:serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["success"], false);
+        assert!(body["error"].as_str().unwrap().contains("Pair and connect"));
     }
 
     #[tokio::test]

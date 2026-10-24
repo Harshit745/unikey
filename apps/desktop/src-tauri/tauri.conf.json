@@ -30,6 +30,10 @@
   },
   "bundle": {
     "active": true,
+    "macOS": {
+      "signingIdentity": "-",
+      "infoPlist": "Info.plist"
+    },
     "targets": "all",
     "category": "Utility",
     "shortDescription": "One keyboard, one clipboard, one workspace across every device.",

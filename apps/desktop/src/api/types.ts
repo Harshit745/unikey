@@ -107,6 +107,17 @@ export interface RootInfo {
 }
 
 /** One active encrypted session (from `/api/v1/sessions`). */
+export interface CursorStatus {
+  supported: boolean;
+  receiving_enabled: boolean;
+  capture_running: boolean;
+  phase: 'local' | 'checking_peer' | 'armed' | 'entering' | 'remote' | 'receiving';
+  peer_id: string | null;
+  edge: 'left' | 'right' | null;
+  error: string | null;
+  screen: { x: number; y: number; width: number; height: number } | null;
+}
+
 export interface SessionInfo {
   peer_id: string;
   peer_name: string;

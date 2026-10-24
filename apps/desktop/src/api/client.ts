@@ -124,6 +124,12 @@ export const api = {
   events: () => new EventSource(`${BASE}/api/v1/events`),
 
   // ── Input forwarding ─────────────────────────────────────────────
+  cursorStatus: () => getEnvelope<import('./types').CursorStatus>('/api/v1/input/cursor'),
+  cursorStart: (peerId: string, edge: 'left' | 'right') =>
+    postEnvelope<import('./types').CursorStatus>('/api/v1/input/cursor/start', { peer_id: peerId, edge }),
+  cursorStop: () => postEnvelope<import('./types').CursorStatus>('/api/v1/input/cursor/stop'),
+  cursorReceiving: (enabled: boolean) =>
+    postEnvelope<import('./types').CursorStatus>('/api/v1/input/cursor/receiving', { enabled }),
   forwardKeyboard: (peerId: string, key: string, isPress: boolean, modifiers: string[] = []) =>
     postEnvelope<null>('/api/v1/input/keyboard', {
       peer_id: peerId, key, is_press: isPress, modifiers,

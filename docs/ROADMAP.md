@@ -13,6 +13,7 @@
 | PIN pairing + persistent key-pinned trust store | ✅ Verified locally; QR journey unverified | `pairing` |
 | Clipboard sync (text / HTML / images, loop prevention, history) | 🧪 Unit-tested; physical-device journey unverified | `clipboard` |
 | Keyboard & mouse forwarding | 🧪 Unit-tested; OS permissions/device journey unverified | `input` |
+| Native shared cursor (main displays, left/right, mouse only) | 🧪 Ownership protocol and recovery tests pass; physical Mac↔Windows validation pending | `input`, desktop Input page |
 | Chunked file transfer (SHA-256, resume, cancel, progress) | ✅ Core transfer verified locally; resume/cancel journey unverified | `files` |
 | Native Files-page drag/drop | ✅ Implemented and locally UI-verified on macOS; Windows interaction unverified | `apps/desktop` |
 | Screen-edge file handoff strip | 🧪 Implemented for edge release; physical Windows↔macOS verification pending | `apps/desktop` |

@@ -1057,17 +1057,22 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "common",
+ "crypto",
  "device",
  "enigo",
+ "pairing",
  "protocol",
  "serde",
  "serde_json",
  "services",
  "tokio",
+ "tokio-util",
  "tracing",
  "transport",
  "uuid",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

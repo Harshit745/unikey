@@ -1,5 +1,8 @@
 # UniKey
 
+Experimental mouse handoff between paired Mac and Windows computers is available
+under **Input**. See [shared cursor setup and limitations](docs/SHARED_CURSOR.md).
+
 **OS-layer workspace mesh** — a cross-platform project for connecting devices
 into a shared workspace. The current MVP has been verified on macOS; Windows,
 Linux, Android, and iOS remain targets until tested on those platforms.
