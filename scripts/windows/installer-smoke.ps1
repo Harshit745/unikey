@@ -6,7 +6,10 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$InstallerPath,
-    [string]$InstallDir = (Join-Path $env:RUNNER_TEMP "UniKey-Installer-Smoke")
+    [string]$InstallDir = (Join-Path $env:RUNNER_TEMP "UniKey-Installer-Smoke"),
+    [string]$ExpectedCommit,
+    [string]$ExpectedDaemonPath,
+    [string]$ExpectedAppPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +18,11 @@ $InstallerPath = (Resolve-Path $InstallerPath).Path
 if (Test-Path $InstallDir) {
     throw "Smoke install directory already exists: $InstallDir"
 }
+if (Get-NetTCPConnection -LocalPort 45895 -State Listen -ErrorAction SilentlyContinue) {
+    throw "Port 45895 is already occupied; refusing to validate an unrelated daemon"
+}
+if ($ExpectedDaemonPath) { $ExpectedDaemonPath = (Resolve-Path $ExpectedDaemonPath).Path }
+if ($ExpectedAppPath) { $ExpectedAppPath = (Resolve-Path $ExpectedAppPath).Path }
 
 Write-Host "Installing $InstallerPath into $InstallDir"
 $install = Start-Process -FilePath $InstallerPath -ArgumentList "/S", "/D=$InstallDir" -Wait -PassThru
@@ -24,6 +32,10 @@ $AppPath = Join-Path $InstallDir "UniKey.exe"
 $UninstallerPath = Join-Path $InstallDir "uninstall.exe"
 if (-not (Test-Path $AppPath)) { throw "Installed app not found: $AppPath" }
 if (-not (Test-Path $UninstallerPath)) { throw "Uninstaller not found: $UninstallerPath" }
+if ($ExpectedAppPath -and
+    (Get-FileHash $AppPath -Algorithm SHA256).Hash -ne (Get-FileHash $ExpectedAppPath -Algorithm SHA256).Hash) {
+    throw "Installed app does not match the newly built shell (stale installer)"
+}
 
 $StartMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\UniKey\UniKey.lnk"
 if (-not (Test-Path $StartMenuShortcut)) { throw "Start menu shortcut not found: $StartMenuShortcut" }
@@ -46,6 +58,29 @@ $version = Invoke-RestMethod -Uri "http://127.0.0.1:45895/version" -TimeoutSec 2
 $services = Invoke-RestMethod -Uri "http://127.0.0.1:45895/services" -TimeoutSec 2
 if (-not $version.version) { throw "Packaged daemon /version response was incomplete" }
 if ($null -eq $services.services) { throw "Packaged daemon /services response was incomplete" }
+Write-Host "Packaged daemon version: $($version | ConvertTo-Json -Compress)"
+if ($ExpectedCommit -and $version.commit -ne $ExpectedCommit) {
+    throw "Packaged daemon commit $($version.commit) does not match CI source $ExpectedCommit"
+}
+
+$cursor = Invoke-RestMethod -Uri "http://127.0.0.1:45895/api/v1/input/cursor" -TimeoutSec 2
+if ($cursor.success -ne $true -or $cursor.data.supported -ne $true -or
+    $cursor.data.receiving_enabled -ne $false -or $cursor.data.phase -ne "local") {
+    throw "Packaged daemon cursor API is missing or has unsafe startup state"
+}
+Write-Host "Packaged cursor API: supported, receiving off, local ownership"
+
+$listeners = @(Get-NetTCPConnection -LocalPort 45895 -State Listen)
+$ownerIds = @($listeners.OwningProcess | Sort-Object -Unique)
+if ($ownerIds.Count -ne 1) { throw "Expected one packaged daemon API owner" }
+$daemonProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($ownerIds[0])"
+if ($daemonProcess.ParentProcessId -ne $app.Id) { throw "API daemon is not owned by the installed app" }
+if ($ExpectedDaemonPath -and
+    (Get-FileHash $daemonProcess.ExecutablePath -Algorithm SHA256).Hash -ne
+    (Get-FileHash $ExpectedDaemonPath -Algorithm SHA256).Hash) {
+    throw "Running embedded daemon does not match the newly built daemon"
+}
+Write-Host "Verified daemon owner and payload: $($daemonProcess.ExecutablePath)"
 
 $app | Wait-Process -Timeout 15
 $app.Refresh()
@@ -78,4 +113,4 @@ while ((Test-Path $AppPath) -and (Get-Date) -lt $uninstallDeadline) {
 }
 if (Test-Path $AppPath) { throw "Application remained after uninstall: $AppPath" }
 
-Write-Host "Installer smoke test passed: install, launch, daemon readiness, graceful exit, and uninstall"
+Write-Host "Installer smoke test passed: install, current app/daemon payload, commit, cursor API, graceful exit, and uninstall"

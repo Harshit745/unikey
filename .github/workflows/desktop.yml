@@ -12,6 +12,8 @@ env:
   NODE_VERSION: '22'
   RUST_VERSION: 'stable'
   DAEMON_PORT: 45895
+  # Invalidate cached build metadata for every source revision.
+  UNIKEY_OVERRIDE_COMMIT: ${{ github.sha }}
 
 jobs:
   # ── macOS build ────────────────────────────────────────────────────────
@@ -130,17 +132,25 @@ jobs:
       - name: Stage downloadable Windows installer
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path "apps/desktop/src-tauri/target" -Recurse -Filter "*-setup.exe" |
-            Select-Object -First 1
-          if (-not $installer) { throw "Tauri did not produce an NSIS installer" }
+          # Never recursively select from target/: the Rust cache can contain
+          # an older installer under target/release alongside this target build.
+          $config = Get-Content "apps/desktop/src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json
+          $installer = "apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/$($config.productName)_$($config.version)_x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "Missing installer from this build: $installer" }
+          Write-Host "Staging exact target installer: $installer"
           New-Item -ItemType Directory -Path "release-artifacts" -Force | Out-Null
-          Copy-Item $installer.FullName "release-artifacts/UniKey-Setup.exe"
+          Copy-Item -LiteralPath $installer -Destination "release-artifacts/UniKey-Setup.exe"
           $hash = (Get-FileHash "release-artifacts/UniKey-Setup.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  UniKey-Setup.exe" | Set-Content -NoNewline "release-artifacts/UniKey-Setup.exe.sha256"
 
       - name: Smoke-test install, launch, daemon lifecycle, and uninstall
         shell: pwsh
-        run: .\scripts\windows\installer-smoke.ps1 -InstallerPath .\release-artifacts\UniKey-Setup.exe
+        run: >-
+          .\scripts\windows\installer-smoke.ps1
+          -InstallerPath .\release-artifacts\UniKey-Setup.exe
+          -ExpectedCommit $env:GITHUB_SHA
+          -ExpectedDaemonPath .\target\x86_64-pc-windows-msvc\release\daemon.exe
+          -ExpectedAppPath .\apps\desktop\src-tauri\target\x86_64-pc-windows-msvc\release\UniKey.exe
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

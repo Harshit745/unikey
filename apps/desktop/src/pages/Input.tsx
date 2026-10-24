@@ -50,7 +50,10 @@ const Input: React.FC = () => {
       </div>
       <div role="status" aria-live="polite" className="mt-5 flex items-center gap-2 border-t border-[var(--hairline)] pt-4 text-[13px] text-[var(--ink)]">
         <span className={`h-2 w-2 rounded-full ${status && !error ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-        {error ? 'Update and restart the desktop app to use shared cursor control.' : status ? labels[status.phase] : 'Reading cursor status…'}
+        {error ? (error === 'HTTP 404'
+          ? 'The running daemon has no shared cursor API. Fully quit UniKey and its old daemon, then reopen the updated app.'
+          : `Cannot read shared cursor status (${error}). Check the daemon connection.`)
+          : status ? labels[status.phase] : 'Reading cursor status…'}
       </div>
       {(notice || status?.error) && <p role="alert" className="mt-3 text-[13px] text-rose-600 dark:text-rose-300">{notice ?? status?.error}</p>}
     </GlassCard>

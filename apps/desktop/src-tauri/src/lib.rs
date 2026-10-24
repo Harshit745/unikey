@@ -118,7 +118,7 @@ fn setup_installer_smoke_exit(app: &tauri::App) {
                 // Leave a short observation window so the Windows smoke
                 // script can query /health, /version, and /services while the
                 // installed process and its real daemon are both alive.
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                 app_handle.exit(0);
                 return;
             }

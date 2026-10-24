@@ -41,6 +41,33 @@ and includes a Local Network usage description. This avoids the incomplete
 linker-only signature that caused discovery permission attribution trouble in
 the earlier local build. Distribution signing and notarization remain separate.
 
+## Troubleshooting an old daemon after a Windows update
+
+The desktop launcher reuses any already-healthy daemon on port `45895`. A daemon
+left behind by an earlier app instance can therefore survive an app reinstall.
+The earlier Input page's update message was a generic API-error message, not a
+verified version diagnosis. The updated page distinguishes a missing cursor API
+(404) from other connection errors. In Command Prompt, inspect both endpoints:
+
+```cmd
+curl.exe http://127.0.0.1:45895/version
+curl.exe -i http://127.0.0.1:45895/api/v1/input/cursor
+```
+
+An October 22 build with commit `f9b523653713` predates shared cursor support and
+returns 404 for that route. Fully quit UniKey from the system tray; the window's
+X only hides it. With no transfer or sharing active, restart Windows to clear an
+orphaned daemon, then open the newly installed UniKey from Start. Do not delete
+the pairing store or runtime folder. If the old version persists after a full
+Windows restart, inspect the installed app path and installer checksum before
+reinstalling again.
+
+Windows packaging now selects only the explicit MSVC target's installer, never
+the first cached installer under `target/`. Its smoke test checks the installed
+shell and running daemon against the freshly built binaries by SHA-256, verifies
+the source commit, real parent process, cursor endpoint and safe startup state,
+and refuses to run if another daemon already owns the API port.
+
 ## Current boundaries and verification
 
 - Native macOS Quartz event tap and Windows low-level mouse hook implementations.
