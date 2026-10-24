@@ -98,6 +98,55 @@ async fn input_sessions_disable_nagle_on_both_sockets() {
 }
 
 #[tokio::test]
+async fn encrypted_cursor_burst_keeps_latest_positions_and_button_order() {
+    let (source, sessions, _) = manager("burst-source");
+    let (identity, key) = test_identity("burst-receiver");
+    let (tx, rx) = tokio::sync::mpsc::channel(256);
+    let mut rx = transport::motion::LatestMotionReceiver::new(rx);
+    let receiver = ConnectionManager::new(identity.clone(), key, SessionManager::new(), Some(tx));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let accepted = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        receiver.handle_incoming(stream).await.unwrap();
+    });
+    source.connect_to_peer(addr).await.unwrap();
+    accepted.await.unwrap();
+    let sender = sessions.get_session_sender(&identity.id).await.unwrap();
+    let lease = uuid::Uuid::new_v4();
+    let make = |event| Packet {
+        version: 1, message_type: MessageType::InputMouseEvent,
+        payload: serde_json::to_vec(&serde_json::json!({"cursor":"mouse","lease":lease,"event":event})).unwrap(),
+    };
+    for x in 0..100 {
+        sender.try_send(make(serde_json::json!({"Move":{"x":x,"y":10}}))).unwrap();
+    }
+    sender.try_send(make(serde_json::json!({"ButtonDown":{"button":0,"x":99,"y":10}}))).unwrap();
+    for x in 100..200 {
+        sender.try_send(make(serde_json::json!({"Move":{"x":x,"y":10}}))).unwrap();
+    }
+    sender.try_send(make(serde_json::json!({"ButtonUp":{"button":0,"x":199,"y":10}}))).unwrap();
+    let mut last_x = None;
+    let mut pressed = false;
+    loop {
+        let (_, packet) = tokio::time::timeout(Duration::from_secs(3), rx.recv()).await.unwrap().unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&packet.payload).unwrap();
+        let event = &payload["event"];
+        if let Some(x) = event["Move"]["x"].as_u64() { last_x = Some(x); }
+        if event.get("ButtonDown").is_some() {
+            assert_eq!(last_x, Some(99));
+            assert!(!pressed);
+            pressed = true;
+        }
+        if event.get("ButtonUp").is_some() {
+            assert!(pressed);
+            assert_eq!(last_x, Some(199));
+            break;
+        }
+    }
+}
+
+#[tokio::test]
 async fn two_peers_establish_encrypted_session() {
     let (alice_conn, alice_sessions, alice_id) = manager("alice");
     let (bob_conn, bob_sessions, bob_id) = manager("bob");

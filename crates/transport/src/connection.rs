@@ -270,7 +270,8 @@ impl ConnectionManager {
         session_keys: SessionKeys,
     ) -> tokio::task::JoinHandle<()> {
         // Outbound channel: service-originated packets consumed by the write task.
-        let (tx, mut rx) = mpsc::channel::<Packet>(256);
+        let (tx, rx) = mpsc::channel::<Packet>(256);
+        let mut rx = crate::motion::LatestMotionReceiver::new(rx);
 
         // Clone the sender so the read task can send transport-level replies (Pong).
         let pong_tx = tx.clone();

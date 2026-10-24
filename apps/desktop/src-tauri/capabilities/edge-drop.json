@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "edge-drop-events",
+  "description": "Listen to native Finder/Explorer drag events in the edge handoff window only",
+  "windows": ["edge-drop"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

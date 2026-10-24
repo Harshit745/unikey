@@ -395,7 +395,8 @@ async fn run() -> anyhow::Result<()> {
     let session_manager = SessionManager::new();
     session_manager.set_event_bus(event_bus.clone()).await;
 
-    let (inbound_tx, mut inbound_rx) = mpsc::channel::<(uuid::Uuid, Packet)>(256);
+    let (inbound_tx, inbound_rx) = mpsc::channel::<(uuid::Uuid, Packet)>(256);
+    let mut inbound_rx = transport::motion::LatestMotionReceiver::new(inbound_rx);
 
     let connection_manager = ConnectionManager::new(
         local_identity.clone(),

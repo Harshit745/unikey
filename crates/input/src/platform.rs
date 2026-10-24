@@ -144,10 +144,10 @@ fn inject_mouse(enigo: &mut SendEnigo, event: MouseEvent) -> Result<()> {
     use enigo::{Axis, Button, Coordinate, Direction, Mouse};
     match event {
         MouseEvent::Move { x, y } => {
-            enigo.0.move_mouse(x as i32, y as i32, Coordinate::Abs)?;
+            enigo.0.move_mouse(x.round() as i32, y.round() as i32, Coordinate::Abs)?;
         }
         MouseEvent::ButtonDown { button, x, y } => {
-            enigo.0.move_mouse(x as i32, y as i32, Coordinate::Abs)?;
+            enigo.0.move_mouse(x.round() as i32, y.round() as i32, Coordinate::Abs)?;
             let b = match button {
                 1 => Button::Right,
                 2 => Button::Middle,
@@ -156,7 +156,7 @@ fn inject_mouse(enigo: &mut SendEnigo, event: MouseEvent) -> Result<()> {
             enigo.0.button(b, Direction::Press)?;
         }
         MouseEvent::ButtonUp { button, x, y } => {
-            enigo.0.move_mouse(x as i32, y as i32, Coordinate::Abs)?;
+            enigo.0.move_mouse(x.round() as i32, y.round() as i32, Coordinate::Abs)?;
             let b = match button {
                 1 => Button::Right,
                 2 => Button::Middle,

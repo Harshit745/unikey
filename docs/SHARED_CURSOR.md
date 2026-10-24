@@ -104,6 +104,11 @@ hash is not compared to the restored, unbundled shell executable.
   stale positions instead of replaying an ever-older trail. Button down/up,
   scrolling, peer/lease changes and ownership messages are ordering barriers;
   they are never coalesced. Discrete-event overflow still restores local control.
+- Transport output and daemon input also collapse already-buffered adjacent
+  positions for the same peer/lease before encryption and before injection,
+  respectively. No extra timing window or smoothing filter is added. This
+  prevents a backlog from replaying old cursor positions while aiming at small
+  targets. Receiver pixel conversion rounds rather than truncating positions.
 - The Windows hook waits on input messages rather than sleeping between polls.
   Mouse input wakes it immediately; a short timeout services Escape and recovery.
 - No predictive movement or interpolation is used: these can add latency or

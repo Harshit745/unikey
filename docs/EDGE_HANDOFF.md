@@ -17,6 +17,17 @@ does not need to be open or focused.
    the handoff; release there to finish the local operating-system gesture.
 5. Treat the transfer as successful only when its status becomes `Verified`.
 
+The edge stays enabled while navigating between UniKey pages or hiding its main
+window. Return to Files and choose **Disable edge** to stop it. It is off after
+the desktop app quits. The strip leaves native title-bar controls and the
+Dock/taskbar clear and does not take keyboard focus.
+
+The secondary window has a separate, event-listening-only Tauri capability;
+without it native drag callbacks are rejected. Listener failures and transfer
+errors are now visible in the strip. Blue means pending; green means the remote
+receiver has actually verified every file, not merely accepted an API request.
+The target device cannot be changed while the current edge is enabled.
+
 The receiving daemon writes verified content into its configured UniKey
 download directory. By default this is inside the per-user UniKey data folder.
 

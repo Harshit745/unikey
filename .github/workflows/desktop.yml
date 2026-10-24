@@ -48,7 +48,7 @@ jobs:
 
       - name: Build frontend and type-check
         working-directory: apps/desktop
-        run: npm run build
+        run: npm test && npm run build
 
       - name: Build daemon
         run: cargo build --release --bin daemon
@@ -110,7 +110,7 @@ jobs:
 
       - name: Build frontend and type-check
         working-directory: apps/desktop
-        run: npm run build
+        run: npm test && npm run build
 
       - name: Run Rust tests (Windows)
         run: cargo test --workspace --target x86_64-pc-windows-msvc

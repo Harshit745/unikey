@@ -107,8 +107,9 @@ mod native {
                 Captured::Move {
                     x: p.x,
                     y: p.y,
-                    dx: unsafe { CGEventGetDoubleValueField(event, 4) },
-                    dy: unsafe { CGEventGetDoubleValueField(event, 5) },
+                    // Quartz defines mouse delta fields as integers, not doubles.
+                    dx: unsafe { CGEventGetIntegerValueField(event, 4) } as f64,
+                    dy: unsafe { CGEventGetIntegerValueField(event, 5) } as f64,
                 }
             }
             1 => Captured::Down(0),

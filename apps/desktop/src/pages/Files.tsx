@@ -43,6 +43,25 @@ const Files: React.FC = () => {
   const [edgeCaptureEnabled, setEdgeCaptureEnabled] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // The native target belongs to the app session, not this route. Navigating to
+  // Input or hiding the main window must not tear down an enabled edge target.
+  useEffect(() => {
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const config = await invoke<{ peer_id: string; edge: 'left' | 'right' } | null>('edge_capture_status');
+        if (disposed) return;
+        setEdgeCaptureEnabled(config !== null);
+        if (config) { setPeerId(config.peer_id); setEdge(config.edge); }
+      } catch (error) {
+        if (!disposed) setNotice({ ok: false, text: `Cannot read screen-edge state: ${String(error)}` });
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 2000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
   const trustedIds = useMemo(
     () => new Set((trustedDevices ?? []).map(device => device.id)),
     [trustedDevices],
@@ -58,8 +77,8 @@ const Files: React.FC = () => {
 
   useEffect(() => {
     if (!peerId && targetPeers.length === 1) setPeerId(targetPeers[0].id);
-    if (peerId && !targetPeers.some(peer => peer.id === peerId)) setPeerId('');
-  }, [peerId, targetPeers]);
+    if (!edgeCaptureEnabled && peerId && !targetPeers.some(peer => peer.id === peerId)) setPeerId('');
+  }, [edgeCaptureEnabled, peerId, targetPeers]);
 
   const sendPaths = useCallback(async (paths: string[]) => {
     if (!peerId || paths.length === 0) return;
@@ -148,10 +167,6 @@ const Files: React.FC = () => {
     }
   }, [edge, edgeCaptureEnabled, peerId]);
 
-  useEffect(() => () => {
-    if (edgeCaptureEnabled) void invoke('edge_capture_stop');
-  }, [edgeCaptureEnabled]);
-
   return (
     <>
       {!daemonReachable ? (
@@ -168,7 +183,7 @@ const Files: React.FC = () => {
             </h3>
             <div className="mt-4 grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
               <Field label="Target device">
-                <Select value={peerId} onChange={e => setPeerId(e.target.value)}>
+                <Select value={peerId} onChange={e => setPeerId(e.target.value)} disabled={edgeCaptureEnabled}>
                   <option value="">— select —</option>
                   {targetPeers.map(p => (
                     <option key={p.id} value={p.id}>{p.name} ({p.platform})</option>

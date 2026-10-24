@@ -15,10 +15,12 @@
 mod daemon;
 mod notify;
 mod runtime;
+mod edge;
 
 use std::sync::Mutex;
 
 use daemon::DaemonHandle;
+use edge::{EdgeConfig, EdgeState, ScreenEdge};
 use tauri::{Manager, State};
 
 /// Shared launcher state, handed to commands as `State<'_, LauncherState>`.
@@ -42,7 +44,7 @@ pub fn run() {
     };
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&["edge-drop"]).build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the existing window when a second instance is launched.
             if let Some(w) = app.get_webview_window("main") {
@@ -51,6 +53,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_notification::init())
+        .manage(EdgeState::default())
         .manage(LauncherState {
             launch: tokio::sync::Mutex::new(()),
             runtime: Mutex::new(Some(runtime)),
@@ -62,6 +65,7 @@ pub fn run() {
             runtime_info,
             edge_capture_start,
             edge_capture_stop,
+            edge_capture_status,
         ])
         .setup(|app| {
             setup_tray(app)?;
@@ -188,13 +192,6 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum ScreenEdge {
-    Left,
-    Right,
-}
-
 /// Create a narrow native drop target on a physical screen edge. Files can be
 /// dragged here from Finder/Explorer without first opening the UniKey window.
 /// The edge page forwards the dropped paths to the daemon for the selected,
@@ -202,14 +199,11 @@ enum ScreenEdge {
 #[tauri::command]
 async fn edge_capture_start(
     app: tauri::AppHandle,
+    state: State<'_, EdgeState>,
     peer_id: String,
     edge: ScreenEdge,
 ) -> Result<(), String> {
     uuid::Uuid::parse_str(&peer_id).map_err(|_| "invalid peer id".to_string())?;
-
-    if let Some(existing) = app.get_webview_window("edge-drop") {
-        existing.close().map_err(|e| e.to_string())?;
-    }
 
     let monitor = app
         .primary_monitor()
@@ -218,23 +212,32 @@ async fn edge_capture_start(
     let scale = monitor.scale_factor();
     let size = monitor.size().to_logical::<f64>(scale);
     let origin = monitor.position().to_logical::<f64>(scale);
-    let strip_width = 18.0;
-    let x = match edge {
-        ScreenEdge::Left => origin.x,
-        ScreenEdge::Right => origin.x + size.width - strip_width,
-    };
+    let (x,y,strip_width,height) = edge::bounds(origin.x,origin.y,size.width,size.height,edge);
     let url = format!("index.html#/edge-drop?peer={peer_id}");
+
+    if let Some(existing) = app.get_webview_window("edge-drop") {
+        existing.set_position(tauri::LogicalPosition::new(x,y)).map_err(|e|e.to_string())?;
+        existing.set_size(tauri::LogicalSize::new(strip_width,height)).map_err(|e|e.to_string())?;
+        let mut target = existing.url().map_err(|e|e.to_string())?;
+        target.set_fragment(Some(&format!("/edge-drop?peer={peer_id}")));
+        existing.navigate(target).map_err(|e|e.to_string())?;
+        existing.show().map_err(|e|e.to_string())?;
+        *state.0.lock().unwrap() = Some(EdgeConfig {peer_id,edge});
+        return Ok(());
+    }
 
     tauri::WebviewWindowBuilder::new(&app, "edge-drop", tauri::WebviewUrl::App(url.into()))
         .title("UniKey edge handoff")
-        .position(x, origin.y)
-        .inner_size(strip_width, size.height)
+        .position(x, y)
+        .inner_size(strip_width, height)
         .decorations(false)
         .resizable(false)
         .minimizable(false)
         .maximizable(false)
         .closable(false)
         .focused(false)
+        .focusable(false)
+        .accept_first_mouse(true)
         .always_on_top(true)
         .visible_on_all_workspaces(true)
         .skip_taskbar(true)
@@ -242,15 +245,26 @@ async fn edge_capture_start(
         .build()
         .map_err(|e| e.to_string())?;
 
+    *state.0.lock().unwrap() = Some(EdgeConfig {peer_id,edge});
     Ok(())
 }
 
 #[tauri::command]
-async fn edge_capture_stop(app: tauri::AppHandle) -> Result<(), String> {
+async fn edge_capture_stop(app: tauri::AppHandle, state: State<'_, EdgeState>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("edge-drop") {
-        window.close().map_err(|e| e.to_string())?;
+        window.hide().map_err(|e| e.to_string())?;
     }
+    *state.0.lock().unwrap() = None;
     Ok(())
+}
+
+#[tauri::command]
+async fn edge_capture_status(app: tauri::AppHandle, state: State<'_, EdgeState>) -> Result<Option<EdgeConfig>, String> {
+    let visible = match app.get_webview_window("edge-drop") {
+        Some(window) => window.is_visible().map_err(|e|e.to_string())?,
+        None => false,
+    };
+    Ok(if visible { state.0.lock().unwrap().clone() } else { None })
 }
 
 // ── Tauri commands (called from the React UI via `invoke`) ─────────────
