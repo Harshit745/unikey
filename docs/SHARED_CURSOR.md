@@ -114,6 +114,23 @@ hash is not compared to the restored, unbundled shell executable.
 
 ### Verified build checkpoint (2026-10-24)
 
+The low-latency update is source commit `a424a96`. [Desktop CI run
+40083511083](https://github.com/Harshit745/unikey/actions/runs/40083511083)
+passed all jobs, including the real Windows packaged daemon's full source
+commit, SHA-256 payload comparison, safe cursor API state and install/exit/uninstall.
+The [Windows artifact](https://github.com/Harshit745/unikey/actions/runs/40083511083/artifacts/12556685802)
+contains `UniKey-Setup.exe` with independently checked SHA-256
+`87ff9c0d7f95a45e4afad982af1e1201272ecbd534a454f4d80f2d86a7695b9f`.
+Local workspace regression tests, 18 input tests, targeted input clippy, Windows
+cross-compilation and the Mac release build passed. Host-only encrypted loopback
+timing was p50 109 µs / p95 179 µs in one 200-packet run; this is not a physical
+two-device or mouse-to-photon latency claim. Ad-hoc-signed app/helper updates can
+require refreshing their individual macOS Accessibility grants before capture
+works again. Physical smoothness of this update still requires a user retest on
+both updated computers.
+
+Earlier feature checkpoint:
+
 - Source commit `3866e63`: local Rust workspace tests, targeted input clippy,
   Windows cross-compilation, frontend type-check/build, and desktop-shell tests
   passed. Strict daemon clippy still reports an existing `collapsible_if` warning
