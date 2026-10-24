@@ -31,6 +31,25 @@ The target device cannot be changed while the current edge is enabled.
 The receiving daemon writes verified content into its configured UniKey
 download directory. By default this is inside the per-user UniKey data folder.
 
+## Verified checkpoint (2026-10-24)
+
+Source build `3439c82` was installed on the Mac. After refreshing the approved
+app and helper Accessibility grants, native cursor capture started successfully;
+cursor receiving was then turned off. The right-edge file target remained
+enabled after navigating from Files to Input and back.
+
+The user dragged a generated, non-personal 173-byte text file from Finder to the
+Mac's right-edge strip and confirmed the interaction worked. The live transfer
+API and Files screen reported `Verified` after the paired Dell's acknowledgement.
+This verifies Mac-to-Windows edge handoff, not Windows-to-Mac native dragging or
+continuous dragging into arbitrary remote applications.
+
+The [Windows installer build and lifecycle checks](https://github.com/Harshit745/unikey/actions/runs/40085960363)
+passed. [The matching Windows artifact](https://github.com/Harshit745/unikey/actions/runs/40085960363/artifacts/12556694885)
+contains `UniKey-Setup.exe` and its independently checked SHA-256 file:
+`dadb8778b50a9269c24541bb09ad0c471a2348abfbaee8fb28500fdab9d9805c`.
+This is an expiring CI artifact, not a published GitHub release.
+
 ## Current boundary
 
 This milestone is an edge **handoff**, not yet a continuous native drag session

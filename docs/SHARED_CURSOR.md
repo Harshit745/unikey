@@ -122,7 +122,31 @@ hash is not compared to the restored, unbundled shell executable.
   Unit tests additionally verify a 10,000-move burst collapses to the latest
   position without losing click/scroll/release ordering.
 
-### Verified build checkpoint (2026-10-24)
+### Precision update checkpoint (2026-10-24)
+
+Source build `3439c82` additionally coalesces already-buffered absolute cursor
+positions at the transport send and daemon receive queues, without crossing
+peer, lease, button, scroll or ownership boundaries. Native injection rounds
+absolute coordinates rather than truncating, and Quartz relative motion reads
+the documented integer delta fields. No artificial smoothing or pointer gain
+was added.
+
+Local workspace tests, four frontend tests, eleven desktop-shell tests, targeted
+input clippy, Windows cross-compilation and Mac packaging passed. A real encrypted
+TCP regression test preserves the final motion position before each button event.
+[Desktop CI 40085960363](https://github.com/Harshit745/unikey/actions/runs/40085960363)
+passed Windows tests and NSIS install/launch/current-payload/shutdown/uninstall
+verification, macOS packaging and Linux integration. The [Windows artifact](https://github.com/Harshit745/unikey/actions/runs/40085960363/artifacts/12556694885)
+has independently checked installer SHA-256
+`dadb8778b50a9269c24541bb09ad0c471a2348abfbaee8fb28500fdab9d9805c`.
+
+The installed Mac's approved app/helper grants were refreshed and native capture
+started successfully. Receiving was turned off afterward. Physical precision
+and smoothness remain subject to a user retest with this build on both computers;
+neither successful compilation nor these protocol tests establish mouse-to-photon
+latency or Apple-equivalent feel.
+
+### Earlier low-latency checkpoint (2026-10-24)
 
 The low-latency update is source commit `a424a96`. [Desktop CI run
 40083511083](https://github.com/Harshit745/unikey/actions/runs/40083511083)
