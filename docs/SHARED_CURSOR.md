@@ -33,6 +33,11 @@ reports that permission is missing, also add the exact running
 Verify its path against the running UniKey helper before granting access; do not
 grant access to unrelated executables. Quit and reopen UniKey after granting it.
 A new helper binary after an update may require its own permission grant.
+If the switches are on but native capture still reports permission denied after
+an ad-hoc-signed update, toggling alone may retain the old code requirement.
+Remove and re-add the current `/Applications/UniKey.app` and the exact current
+helper through that same macOS permission panel, then fully quit and reopen
+UniKey. Do not edit the OS permission database or bypass the native trust check.
 An unavailable OS backend is reported as unavailable, never simulated as working.
 Only Escape is inspected from the keyboard; keyboard contents are not forwarded.
 
