@@ -96,8 +96,9 @@ mod native {
         // SAFETY: the dedicated capture thread owns this boxed controller until
         // after the tap is disabled and its runloop source is removed.
         let controller = unsafe { &*(data as *const CursorController) };
-        // Avoid recapturing software-injected events (including UniKey itself).
-        if unsafe { CGEventGetIntegerValueField(event, 41) } != 0 {
+        // Exclude our own injected events without excluding legitimate events
+        // from WindowServer or other local input devices.
+        if unsafe { CGEventGetIntegerValueField(event, 41) } == std::process::id() as i64 {
             return event;
         }
         let captured = match kind {
@@ -194,9 +195,9 @@ mod native {
                     if remote != hidden {
                         unsafe {
                             if remote {
-                                CGDisplayHideCursor(0);
+                                CGDisplayHideCursor(CGMainDisplayID());
                             } else {
-                                CGDisplayShowCursor(0);
+                                CGDisplayShowCursor(CGMainDisplayID());
                             }
                         }
                         hidden = remote;
@@ -216,7 +217,7 @@ mod native {
                 }
                 if hidden {
                     unsafe {
-                        CGDisplayShowCursor(0);
+                        CGDisplayShowCursor(CGMainDisplayID());
                     }
                 }
                 unsafe {
