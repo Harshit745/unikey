@@ -231,6 +231,12 @@ async fn chunk_and_send(
 ) {
     let transfer_id = metadata.transfer_id;
     let total = metadata.total_size;
+    let Some((tx, binary)) = sm.file_transfer_sender(&peer_id).await else {
+        fail_transfer(&manager, transfer_id, "peer session closed before transfer".into(), &events).await;
+        return;
+    };
+    tracing::info!("[FILES] Sending {} using {} chunks", metadata.filename,
+        if binary { "binary-v1" } else { "legacy JSON" });
 
     // Announce the transfer before streaming any chunks so the receiver can
     // register it and reject invalid metadata up front.
@@ -246,17 +252,9 @@ async fn chunk_and_send(
         message_type: MessageType::FileMetadata,
         payload: meta_payload,
     };
-    match sm.get_session_sender(&peer_id).await {
-        Some(tx) => {
-            if let Err(e) = tx.send(meta_packet).await {
-                fail_transfer(&manager, transfer_id, format!("send error: {e}"), &events).await;
-                return;
-            }
-        }
-        None => {
-            fail_transfer(&manager, transfer_id, "peer session closed before transfer".to_string(), &events).await;
-            return;
-        }
+    if let Err(e) = tx.send(meta_packet).await {
+        fail_transfer(&manager, transfer_id, format!("send error: {e}"), &events).await;
+        return;
     }
 
     let mut file = match tokio::fs::File::open(&path).await {
@@ -274,7 +272,7 @@ async fn chunk_and_send(
     // Throttle progress events to ~10 Hz so the GUI isn't flooded on big files.
     let mut last_progress = std::time::Instant::now();
 
-    loop {
+    while sent < total {
         // Honour an early cancel from either side.
         if manager.is_cancelled(transfer_id).await {
             send_control(&sm, &peer_id, MessageType::FileCancel, transfer_id).await;
@@ -284,15 +282,11 @@ async fn chunk_and_send(
             return;
         }
 
-        let n = match file.read(&mut buf).await {
-            Ok(n) => n,
-            Err(e) => {
-                fail_transfer(&manager, transfer_id, format!("read error: {e}"), &events).await;
-                return;
-            }
-        };
-        if n == 0 {
-            break;
+        let n = (total - sent).min(CHUNK_SIZE as u64) as usize;
+        if let Err(e) = file.read_exact(&mut buf[..n]).await {
+            fail_transfer(&manager, transfer_id, format!("read error: {e}"), &events).await;
+            send_control(&sm, &peer_id, MessageType::FileCancel, transfer_id).await;
+            return;
         }
 
         hasher.update(&buf[..n]);
@@ -303,7 +297,7 @@ async fn chunk_and_send(
             chunk_index,
             data: buf[..n].to_vec(),
         };
-        let payload = match serde_json::to_vec(&chunk) {
+        let payload = match chunk.encode(binary) {
             Ok(p) => p,
             Err(e) => {
                 fail_transfer(&manager, transfer_id, format!("serialize error: {e}"), &events).await;
@@ -316,17 +310,9 @@ async fn chunk_and_send(
             payload,
         };
 
-        match sm.get_session_sender(&peer_id).await {
-            Some(tx) => {
-                if let Err(e) = tx.send(packet).await {
-                    fail_transfer(&manager, transfer_id, format!("send error: {e}"), &events).await;
-                    return;
-                }
-            }
-            None => {
-                fail_transfer(&manager, transfer_id, "peer session closed during transfer".to_string(), &events).await;
-                return;
-            }
+        if let Err(e) = tx.send(packet).await {
+            fail_transfer(&manager, transfer_id, format!("send error: {e}"), &events).await;
+            return;
         }
 
         manager.record_sent(transfer_id, sent).await;
@@ -465,7 +451,7 @@ impl Service for FileTransferService {
             }
 
             MessageType::FileChunk => {
-                let chunk: FileChunk = serde_json::from_slice(payload)?;
+                let chunk = FileChunk::decode(payload)?;
                 match self.manager.receive_chunk(peer_id, &chunk).await {
                     Ok(Some((meta, bytes))) => {
                         // Complete transfer — verify integrity, then persist.

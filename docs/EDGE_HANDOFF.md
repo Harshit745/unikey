@@ -30,6 +30,8 @@ The target device cannot be changed while the current edge is enabled.
 
 The receiving daemon writes verified content into its configured UniKey
 download directory. By default this is inside the per-user UniKey data folder.
+For wire-format changes, measured throughput and large-file limitations, see
+[File transfers](FILE_TRANSFERS.md).
 
 ## Verified checkpoint (2026-10-24)
 

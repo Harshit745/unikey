@@ -25,3 +25,4 @@ events = { path = "../events" }
 [dev-dependencies]
 crypto = { path = "../crypto" }
 tokio-util = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

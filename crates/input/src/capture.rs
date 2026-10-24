@@ -189,7 +189,7 @@ mod native {
                         let mut s = controller.state.lock().unwrap();
                         (
                             s.capture_running,
-                            s.source.as_ref().is_some_and(|c| c.entered),
+                            s.source.as_ref().is_some_and(|c| c.entered) || s.receiver_idle,
                             s.warp.take(),
                         )
                     };
@@ -238,6 +238,7 @@ mod native {
 mod native {
     use super::*;
     use crate::cursor::Captured;
+    use crate::windows_cursor::{PhysicalCoordinates, SourceCursor};
     use std::{cell::RefCell, ptr};
     use windows_sys::Win32::{
         Foundation::{LPARAM, LRESULT, POINT, WPARAM},
@@ -249,6 +250,7 @@ mod native {
     };
     thread_local! {static CONTROLLER:RefCell<Option<CursorController>>=const{RefCell::new(None)};}
     pub fn screen() -> Result<Screen> {
+        let _coordinates = PhysicalCoordinates::enter()?;
         let s = Screen {
             x: 0.,
             y: 0.,
@@ -271,7 +273,9 @@ mod native {
         }
         let mut actual = POINT { x: 0, y: 0 };
         unsafe {
-            GetCursorPos(&mut actual);
+            if GetPhysicalCursorPos(&mut actual) == 0 {
+                return CallNextHookEx(ptr::null_mut(), code, msg, data);
+            }
         }
         let event = match msg as u32 {
             WM_MOUSEMOVE => Captured::Move {
@@ -303,6 +307,14 @@ mod native {
         std::thread::Builder::new()
             .name("unikey-cursor".into())
             .spawn(move || {
+                let _coordinates = match PhysicalCoordinates::enter() {
+                    Ok(scope) => scope,
+                    Err(error) => { let _ = tx.send(Err(error.to_string())); return; }
+                };
+                let mut source_cursor = match SourceCursor::new() {
+                    Ok(cursor) => cursor,
+                    Err(error) => { let _ = tx.send(Err(error.to_string())); return; }
+                };
                 CONTROLLER.with(|c| *c.borrow_mut() = Some(controller.clone()));
                 let hook = unsafe {
                     SetWindowsHookExW(WH_MOUSE_LL, Some(hook), GetModuleHandleW(ptr::null()), 0)
@@ -320,7 +332,6 @@ mod native {
                     s.capture_running = true;
                 }
                 let _ = tx.send(Ok(()));
-                let mut hidden = false;
                 loop {
                     let mut msg = unsafe { std::mem::zeroed() };
                     while unsafe { PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) } != 0 {
@@ -332,23 +343,22 @@ mod native {
                     if unsafe { GetAsyncKeyState(VK_ESCAPE as i32) } < 0 {
                         controller.capture(Captured::Escape);
                     }
-                    let (running, remote, warp) = {
+                    let (running, remote, receiver_idle, warp) = {
                         let mut s = controller.state.lock().unwrap();
                         (
                             s.capture_running,
                             s.source.as_ref().is_some_and(|c| c.entered),
+                            s.receiver_idle,
                             s.warp.take(),
                         )
                     };
-                    if remote != hidden {
-                        unsafe {
-                            ShowCursor(!remote as i32);
-                        }
-                        hidden = remote;
+                    if let Err(error) = source_cursor.update(remote, receiver_idle, display) {
+                        controller.state.lock().unwrap().receiver_idle = false;
+                        controller.stop(Some(format!("Cannot hide source cursor: {error}")));
                     }
                     if let Some((x, y)) = warp {
                         unsafe {
-                            SetCursorPos(x as i32, y as i32);
+                            SetPhysicalCursorPos(x.round() as i32, y.round() as i32);
                         }
                     }
                     if !running {
@@ -367,11 +377,7 @@ mod native {
                         );
                     }
                 }
-                if hidden {
-                    unsafe {
-                        ShowCursor(1);
-                    }
-                }
+                let _ = source_cursor.update(false, false, display);
                 unsafe {
                     UnhookWindowsHookEx(hook);
                 }

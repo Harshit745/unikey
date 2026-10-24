@@ -35,6 +35,7 @@ async fn fixture() -> Fixture {
             peer_name: "test-peer".into(),
             platform: "Windows".into(),
             peer_public_key: [9; 32],
+            file_chunk_binary: false,
             tx,
             session_keys: crypto::SessionKeys {
                 send_key: [1; 32],
@@ -213,8 +214,37 @@ async fn disconnect_releases_held_buttons_and_ends_ownership() {
     }
     f.service.tick().await;
     assert!(f.service.cursor.state.lock().unwrap().receiver.is_none());
+    assert!(!f.service.cursor.state.lock().unwrap().receiver_idle);
     assert!(matches!(
         f.injector.0.lock().unwrap().last(),
         Some(InputAction::Mouse(MouseEvent::ButtonUp { button: 0, .. }))
     ));
+}
+
+#[tokio::test]
+async fn normal_return_hides_old_remote_pointer_until_real_local_input() {
+    let f = fixture().await;
+    f.service.cursor.state.lock().unwrap().receiving = true;
+    let lease = Uuid::new_v4();
+    deliver(&f, Wire::Enter { lease, edge: Edge::Right, y: 0.5 }).await.unwrap();
+    assert!(!f.service.cursor.state.lock().unwrap().receiver_idle);
+    deliver(&f, Wire::Release { lease, y: 0.5 }).await.unwrap();
+    assert!(f.service.cursor.state.lock().unwrap().receiver_idle);
+    assert_eq!(f.service.status().phase, "local");
+    // Synthetic remote packets never call capture; native hardware does.
+    assert!(!f.service.cursor.capture(crate::cursor::Captured::Move {
+        x: 20., y: 30., dx: 1., dy: 0.,
+    }));
+    assert!(!f.service.cursor.state.lock().unwrap().receiver_idle);
+}
+
+#[tokio::test]
+async fn disabling_receiving_and_emergency_stop_always_reveal_local_cursor() {
+    let f = fixture().await;
+    f.service.cursor.state.lock().unwrap().receiver_idle = true;
+    f.service.set_receiving(false).unwrap();
+    assert!(!f.service.cursor.state.lock().unwrap().receiver_idle);
+    f.service.cursor.state.lock().unwrap().receiver_idle = true;
+    f.service.stop_cursor();
+    assert!(!f.service.cursor.state.lock().unwrap().receiver_idle);
 }

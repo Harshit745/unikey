@@ -24,6 +24,8 @@ pub struct Session {
     /// Long-term Ed25519 identity key authenticated by the transport Hello.
     /// The pairing trust store pins this key to `peer_id`.
     pub peer_public_key: [u8; 32],
+    /// Wire optimization advertised by the peer, not a trust decision.
+    pub file_chunk_binary: bool,
     /// Channel used by feature modules (Clipboard, etc.) to send outbound packets.
     pub tx: mpsc::Sender<Packet>,
     /// Session keys for encrypted communication
@@ -144,6 +146,13 @@ impl SessionManager {
         let lock = self.sessions.read().await;
         let session = lock.get(peer_id)?;
         Some(session.lock().await.tx.clone())
+    }
+
+    /// Keep encoding and sender bound to the same concrete session.
+    pub async fn file_transfer_sender(&self, peer_id: &Uuid) -> Option<(mpsc::Sender<Packet>, bool)> {
+        let session = self.get_session(peer_id).await?;
+        let session = session.lock().await;
+        Some((session.tx.clone(), session.file_chunk_binary))
     }
 
     /// Return the authenticated long-term identity key for an active peer.
@@ -300,6 +309,7 @@ mod tests {
             peer_name: peer_name.to_string(),
             platform: "test".to_string(),
             peer_public_key: [7; 32],
+            file_chunk_binary: false,
             tx,
             session_keys: SessionKeys {
                 send_key: [0u8; 32],

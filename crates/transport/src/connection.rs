@@ -75,6 +75,7 @@ impl HandshakeContext {
             device_id: self.local_identity.id,
             device_name: self.local_identity.name.clone(),
             platform: "Desktop".to_string(),
+            file_chunk_binary: true,
             ed25519_public_key: self.local_identity_key.public_key(),
             x25519_public_key: ephemeral_pub,
             timestamp,
@@ -285,6 +286,7 @@ impl ConnectionManager {
             peer_name: remote_hello.device_name,
             platform: remote_hello.platform,
             peer_public_key: remote_hello.ed25519_public_key,
+            file_chunk_binary: remote_hello.file_chunk_binary,
             tx,
             session_keys,
             inbound_replay: ReplayGuard::new(),
@@ -343,15 +345,26 @@ impl ConnectionManager {
                         break;
                     }
 
-                    // Decrypt and process frame — lock only during processing.
-                    {
+                    // Never hold the session lock while waiting on service
+                    // backpressure: services may need it to send an ACK.
+                    let decoded = {
                         let mut session = session_arc.lock().await;
-                        if let Err(e) = process_inbound_frame(
+                        process_inbound_frame(
                             frame_slice,
                             &mut session,
-                            &inbound_tx,
                             &pong_tx,
-                        ).await {
+                        )
+                    };
+                    match decoded {
+                        Ok(Some(packet)) => {
+                            if let Some(tx) = &inbound_tx
+                                && tx.send((peer_id, packet)).await.is_err()
+                            {
+                                break;
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
                             tracing::debug!("[CONN] Frame processing error for {peer_id}: {e}");
                             break;
                         }
@@ -548,12 +561,11 @@ async fn send_packet(
 }
 
 /// Process an inbound encrypted frame: decrypt, verify replay, decode packet.
-async fn process_inbound_frame(
+fn process_inbound_frame(
     frame_bytes: &[u8],
     session: &mut Session,
-    inbound_tx: &Option<mpsc::Sender<(uuid::Uuid, Packet)>>,
     pong_tx: &mpsc::Sender<Packet>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Option<Packet>, Box<dyn std::error::Error + Send + Sync>> {
     use protocol::{EncryptedFrame, FRAME_HEADER_LEN, FRAME_VERSION, FLAG_ENCRYPTED, MessageType, Packet, PacketCodec};
     use crypto::{open, Nonce};
 
@@ -619,16 +631,13 @@ async fn process_inbound_frame(
             tracing::warn!("[CONN] Unexpected Hello from {}", session.peer_id);
         }
         _ => {
-            // Route all other packets to the service layer
-            if let Some(tx) = inbound_tx
-                && tx.try_send((session.peer_id, packet)).is_err()
-            {
-                tracing::warn!("[CONN] Inbound channel full — dropping packet for {}", session.peer_id);
-            }
+            // Reliable packets must not silently disappear when a receiver
+            // is busy hashing or persisting a file. TCP supplies backpressure.
+            return Ok(Some(packet));
         }
     }
 
-    Ok(())
+    Ok(None)
 }
 
 /// Build an outbound encrypted frame from a plaintext packet.

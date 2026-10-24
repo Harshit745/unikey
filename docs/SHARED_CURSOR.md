@@ -77,6 +77,42 @@ hash is not compared to the restored, unbundled shell executable.
 
 ## Current boundaries and verification
 
+### Single-cursor and Windows scaling correction
+
+Windows hook coordinates are physical/per-monitor-aware. Capture now reads the
+baseline with `GetPhysicalCursorPos`, and screen queries, capture-thread window
+operations and enigo injection use a scoped per-monitor-v2 DPI context. This
+avoids subtracting scaled logical positions from physical positions, which can
+create a repeated positive delta and drive the remote cursor into a corner.
+The calling thread's previous DPI context is restored after each scope.
+
+A background-thread `ShowCursor` call does not hide the cursor over another
+application. During acknowledged remote ownership, Windows now parks the source
+point inside a tiny, non-activating transparent native window that owns a null
+cursor. It does not replace global system cursors, attach other apps' input
+queues, or confine the mouse. The window is hidden on return, Escape, error or
+shutdown, and is destroyed by the OS if the daemon exits. Parking away from the
+physical screen boundary leaves room for motion in both directions.
+
+After a normal ownership return, the former receiver hides its stale pointer
+until real local hardware input reveals it again. Disabling receiving, emergency
+stop and lease failure reveal the local pointer instead of leaving it hidden.
+Protocol tests cover those visibility transitions; they do not verify Windows
+trackpad hardware behavior or the number of physically visible cursors.
+
+Retest with both updated builds: use the Dell trackpad at its normal Windows
+scaling, cross to the Mac, move in all four directions, aim at a small control,
+return, then press Escape during another crossing. Check that only the controlled
+screen shows the active pointer and that local input recovers immediately.
+Repeat Mac-to-Dell. Physical validation remains required before claiming these
+reported hardware symptoms are resolved.
+
+API coordinate and cursor semantics: [MSLLHOOKSTRUCT](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-msllhookstruct),
+[GetPhysicalCursorPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getphysicalcursorpos),
+[cursor visibility](https://learn.microsoft.com/en-us/windows/win32/menurc/about-cursors).
+
+### Supported scope
+
 - Native macOS Quartz event tap and Windows low-level mouse hook implementations.
 - One main display per computer, left/right layout; additional monitors and
   vertical layouts are not supported yet.

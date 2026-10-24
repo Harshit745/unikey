@@ -644,6 +644,7 @@ mod tests {
                 peer_name: peer.name.clone(),
                 platform: peer.platform.to_string(),
                 peer_public_key: [9; 32],
+                file_chunk_binary: false,
                 tx,
                 session_keys: crypto::SessionKeys {
                     send_key: [1; 32],

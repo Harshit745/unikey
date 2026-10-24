@@ -117,6 +117,9 @@ pub(crate) struct State {
     pub warp: Option<(f64, f64)>,
     pub cooldown: Instant,
     pub local_buttons: u8,
+    /// Hide the last remote pointer after ownership returns to the source.
+    /// Real local hardware input reveals it again; injected events do not.
+    pub receiver_idle: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -140,6 +143,7 @@ impl CursorController {
                     warp: None,
                     cooldown: Instant::now(),
                     local_buttons: 0,
+                    receiver_idle: false,
                 })),
             },
             rx,
@@ -218,6 +222,7 @@ impl CursorController {
         s.cooldown = Instant::now() + Duration::from_millis(500);
     }
     pub fn capture(&self, event: Captured) -> bool {
+        self.state.lock().unwrap().receiver_idle = false;
         if matches!(event, Captured::Escape) {
             let active = {
                 let s = self.state.lock().unwrap();

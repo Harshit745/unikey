@@ -60,6 +60,11 @@ pub struct Hello {
     pub device_name: String,
     pub platform: String,
 
+    /// Optional performance capability only; never used for authentication.
+    /// Missing on older peers, which continue receiving legacy JSON chunks.
+    #[serde(default)]
+    pub file_chunk_binary: bool,
+
     /// Long-term Ed25519 public key (32 B, hex). Empty = not advertised.
     #[serde(serialize_with = "ser_key32", deserialize_with = "de_key32")]
     pub ed25519_public_key: [u8; 32],
@@ -80,11 +85,25 @@ impl Default for Hello {
             device_id: Uuid::nil(),
             device_name: String::new(),
             platform: String::new(),
+            file_chunk_binary: false,
             ed25519_public_key: [0; 32],
             x25519_public_key: [0; 32],
             timestamp: 0,
             signature: [0; 64],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_hello_does_not_opt_into_binary_chunks() {
+        let mut value = serde_json::to_value(Hello::default()).unwrap();
+        value.as_object_mut().unwrap().remove("file_chunk_binary");
+        let legacy: Hello = serde_json::from_value(value).unwrap();
+        assert!(!legacy.file_chunk_binary);
     }
 }
 

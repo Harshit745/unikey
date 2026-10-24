@@ -70,6 +70,52 @@ pub struct FileChunk {
     pub data: Vec<u8>,
 }
 
+impl FileChunk {
+    // Unambiguous against the legacy JSON object; versioned independently of
+    // the encrypted transport envelope. No base64, decimal arrays or compression.
+    const MAGIC: &'static [u8; 5] = b"UKFC\x01";
+    const HEADER_LEN: usize = 5 + 16 + 4;
+
+    pub fn encode(&self, binary: bool) -> anyhow::Result<Vec<u8>> {
+        if self.data.len() > CHUNK_SIZE {
+            anyhow::bail!("file chunk exceeds {CHUNK_SIZE} bytes");
+        }
+        if !binary {
+            return Ok(serde_json::to_vec(self)?);
+        }
+        let mut payload = Vec::with_capacity(Self::HEADER_LEN + self.data.len());
+        payload.extend_from_slice(Self::MAGIC);
+        payload.extend_from_slice(self.transfer_id.as_bytes());
+        payload.extend_from_slice(&self.chunk_index.to_be_bytes());
+        payload.extend_from_slice(&self.data);
+        Ok(payload)
+    }
+
+    pub fn decode(payload: &[u8]) -> anyhow::Result<Self> {
+        let chunk = if payload.starts_with(Self::MAGIC) {
+            if !(Self::HEADER_LEN..=Self::HEADER_LEN + CHUNK_SIZE).contains(&payload.len()) {
+                anyhow::bail!("invalid binary file chunk length");
+            }
+            Self {
+                transfer_id: Uuid::from_slice(&payload[5..21])?,
+                chunk_index: u32::from_be_bytes(payload[21..25].try_into()?),
+                data: payload[Self::HEADER_LEN..].to_vec(),
+            }
+        } else {
+            // A legacy byte can take up to four JSON bytes ("255,"). Bound
+            // work and allocation before decoding even authenticated input.
+            if payload.len() > 4 * CHUNK_SIZE + 1024 {
+                anyhow::bail!("legacy file chunk payload too large");
+            }
+            serde_json::from_slice(payload)?
+        };
+        if chunk.data.len() > CHUNK_SIZE {
+            anyhow::bail!("file chunk exceeds {CHUNK_SIZE} bytes");
+        }
+        Ok(chunk)
+    }
+}
+
 /// Public snapshot of a transfer for the API / GUI.
 #[derive(Debug, Clone, Serialize)]
 pub struct TransferInfo {
@@ -181,7 +227,8 @@ impl TransferManager {
                 started_at: Utc::now(),
                 completed_at: None,
                 received_chunks: vec![false; metadata.total_chunks as usize],
-                buffer: Vec::with_capacity(metadata.total_size as usize),
+                // Do not reserve up to 8 GiB on a metadata announcement.
+                buffer: Vec::new(),
             },
         );
         Ok(())
@@ -257,6 +304,15 @@ impl TransferManager {
             // Duplicate chunk — ignore (idempotent delivery), not an error.
             return Ok(None);
         }
+        // TCP preserves ordering; never append out-of-order data or accept a
+        // short middle chunk that would silently shift every following byte.
+        if chunk_offset != state.transferred {
+            anyhow::bail!("out-of-order chunk {}", chunk.chunk_index);
+        }
+        let expected = (state.metadata.total_size - chunk_offset).min(CHUNK_SIZE as u64);
+        if chunk.data.len() as u64 != expected {
+            anyhow::bail!("chunk {} has invalid length", chunk.chunk_index);
+        }
         state.received_chunks[idx] = true;
         state.buffer.extend_from_slice(&chunk.data);
         state.transferred += chunk.data.len() as u64;
@@ -279,8 +335,11 @@ impl TransferManager {
     pub async fn mark_awaiting_confirmation(&self, transfer_id: Uuid) {
         let mut map = self.inner.lock().await;
         if let Some(state) = map.get_mut(&transfer_id) {
-            state.status = TransferStatus::AwaitingConfirmation;
-            state.transferred = state.metadata.total_size;
+            // A fast ACK can race the sender's last bookkeeping operation.
+            if matches!(state.status, TransferStatus::Queued | TransferStatus::InProgress) {
+                state.status = TransferStatus::AwaitingConfirmation;
+                state.transferred = state.metadata.total_size;
+            }
         }
     }
 
@@ -426,6 +485,67 @@ mod tests {
             checksum: [0u8; 32],
             total_chunks: size.div_ceil(CHUNK_SIZE as u64) as u32,
         }
+    }
+
+    #[test]
+    fn binary_and_legacy_chunks_round_trip_without_text_expansion() {
+        for size in [0, 1, CHUNK_SIZE] {
+            let chunk = FileChunk {
+                transfer_id: Uuid::new_v4(),
+                chunk_index: 17,
+                data: (0..size).map(|i| (i % 256) as u8).collect(),
+            };
+            for binary in [false, true] {
+                let encoded = chunk.encode(binary).unwrap();
+                if binary { assert_eq!(encoded.len(), size + 25); }
+                let decoded = FileChunk::decode(&encoded).unwrap();
+                assert_eq!(decoded.transfer_id, chunk.transfer_id);
+                assert_eq!(decoded.chunk_index, chunk.chunk_index);
+                assert_eq!(decoded.data, chunk.data);
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_truncated_unknown_version_and_oversized_chunk_payloads() {
+        assert!(FileChunk::decode(b"UKFC\x01").is_err());
+        assert!(FileChunk::decode(b"UKFC\x02invalid").is_err());
+        let mut oversized = b"UKFC\x01".to_vec();
+        oversized.resize(26 + CHUNK_SIZE, 0);
+        assert!(FileChunk::decode(&oversized).is_err());
+        assert!(FileChunk::decode(&vec![b' '; 4 * CHUNK_SIZE + 1025]).is_err());
+        let chunk = FileChunk { transfer_id: Uuid::new_v4(), chunk_index: 0, data: vec![1; CHUNK_SIZE + 1] };
+        assert!(chunk.encode(true).is_err());
+        assert!(FileChunk::decode(&serde_json::to_vec(&chunk).unwrap()).is_err());
+    }
+
+    #[tokio::test]
+    async fn late_sender_bookkeeping_cannot_erase_receiver_verification() {
+        let mgr = TransferManager::new();
+        let id = Uuid::new_v4();
+        mgr.register_outgoing(Uuid::new_v4(), metadata(id, 100)).await.unwrap();
+        mgr.mark_completed(id, true).await;
+        mgr.mark_awaiting_confirmation(id).await;
+        assert_eq!(mgr.get(id).await.unwrap().status, TransferStatus::Verified);
+    }
+
+    #[tokio::test]
+    async fn rejects_short_middle_chunk_and_reordered_data() {
+        let mgr = TransferManager::new();
+        let id = Uuid::new_v4();
+        let peer = Uuid::new_v4();
+        mgr.register_incoming(peer, &metadata(id, 2 * CHUNK_SIZE as u64)).await.unwrap();
+        let mut chunk = FileChunk { transfer_id: id, chunk_index: 0, data: vec![0; CHUNK_SIZE - 1] };
+        assert!(mgr.receive_chunk(&peer, &chunk).await.is_err());
+        chunk.data.push(0);
+        chunk.chunk_index = 1;
+        assert!(mgr.receive_chunk(&peer, &chunk).await.is_err());
+        chunk.chunk_index = 0;
+        assert!(mgr.receive_chunk(&peer, &chunk).await.unwrap().is_none());
+        // Exact duplicate is harmless, but cannot append the bytes twice.
+        assert!(mgr.receive_chunk(&peer, &chunk).await.unwrap().is_none());
+        chunk.chunk_index = 1;
+        assert_eq!(mgr.receive_chunk(&peer, &chunk).await.unwrap().unwrap().1.len(), 2 * CHUNK_SIZE);
     }
 
     #[tokio::test]

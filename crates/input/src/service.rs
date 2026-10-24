@@ -85,7 +85,15 @@ impl InputService {
         self.release_receiver();
     }
     fn release_receiver(&self) {
-        let r = self.cursor.state.lock().unwrap().receiver.take();
+        self.release_receiver_with_visibility(false);
+    }
+    fn release_receiver_with_visibility(&self, idle: bool) {
+        let r = {
+            let mut state = self.cursor.state.lock().unwrap();
+            let r = state.receiver.take();
+            state.receiver_idle = idle && r.is_some();
+            r
+        };
         if let Some(r) = r {
             for button in r.buttons {
                 let _ = self
@@ -245,6 +253,7 @@ impl InputService {
                         point: (x, y),
                         buttons: vec![],
                     });
+                    s.receiver_idle = false;
                 }
                 if let Err(e) = self.send(peer, Wire::Entered { lease }).await {
                     self.release_receiver();
@@ -353,7 +362,7 @@ impl InputService {
                     self.cursor.stop(None);
                 }
                 if receiver {
-                    self.release_receiver();
+                    self.release_receiver_with_visibility(true);
                 }
             }
         }

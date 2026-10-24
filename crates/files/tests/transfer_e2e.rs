@@ -39,10 +39,7 @@ fn temp_dir(tag: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!(
         "unikey-files-e2e-{tag}-{}-{:?}",
         std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
+        uuid::Uuid::new_v4()
     ));
     std::fs::create_dir_all(&base).expect("create temp base");
     base
@@ -50,15 +47,45 @@ fn temp_dir(tag: &str) -> PathBuf {
 
 #[tokio::test]
 async fn sends_a_file_over_the_wire_end_to_end() {
+    transfer_case(350_000, false, false).await;
+}
+
+#[tokio::test]
+async fn old_peer_gets_legacy_chunks() {
+    transfer_case(350_000, true, false).await;
+}
+
+#[tokio::test]
+async fn slow_receiver_applies_backpressure_without_losing_chunks() {
+    transfer_case(40 * files::CHUNK_SIZE + 1, false, true).await;
+}
+
+/// Real encrypted TCP + file persistence benchmark, not a LAN speed claim.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "95 MiB throughput measurement; run explicitly in release mode"]
+async fn large_file_throughput() {
+    transfer_case(95 * 1024 * 1024, false, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "95 MiB legacy-encoding comparison; run explicitly in release mode"]
+async fn large_file_legacy_throughput() {
+    transfer_case(95 * 1024 * 1024, true, false).await;
+}
+
+async fn transfer_case(size: usize, legacy: bool, slow: bool) {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_test_writer().try_init();
     // ── Transport pair ─────────────────────────────────────────────────────
     let (alice_identity, alice_key) = test_identity("alice");
     let (bob_identity, bob_key) = test_identity("bob");
     let alice_sessions = SessionManager::new();
     let bob_sessions = SessionManager::new();
     let (alice_inbound_tx, mut alice_inbound_rx) =
-        tokio::sync::mpsc::channel::<(uuid::Uuid, Packet)>(256);
+        tokio::sync::mpsc::channel::<(uuid::Uuid, Packet)>(if slow { 2 } else { 256 });
     let (bob_inbound_tx, mut bob_inbound_rx) =
-        tokio::sync::mpsc::channel::<(uuid::Uuid, Packet)>(256);
+        tokio::sync::mpsc::channel::<(uuid::Uuid, Packet)>(if slow { 2 } else { 256 });
     let alice_conn = ConnectionManager::new(
         alice_identity.clone(),
         alice_key,
@@ -90,6 +117,12 @@ async fn sends_a_file_over_the_wire_end_to_end() {
 
     assert!(alice_sessions.has_session(&bob_identity.id).await);
     assert!(bob_sessions.has_session(&alice_identity.id).await);
+    assert!(alice_sessions.file_transfer_sender(&bob_identity.id).await.unwrap().1);
+    if legacy {
+        // Emulate the missing capability of an older Hello. The real socket,
+        // encryption, service routing, persistence and receiver ACK remain live.
+        alice_sessions.get_session(&bob_identity.id).await.unwrap().lock().await.file_chunk_binary = false;
+    }
 
     // ── Services on both sides ─────────────────────────────────────────────
     let root = temp_dir("happy");
@@ -122,6 +155,10 @@ async fn sends_a_file_over_the_wire_end_to_end() {
     let router_bob = bob_files.clone();
     let bob_router = tokio::spawn(async move {
         while let Some((peer_id, packet)) = bob_inbound_rx.recv().await {
+            if packet.message_type == protocol::MessageType::FileChunk {
+                assert_eq!(packet.payload.starts_with(b"UKFC\x01"), !legacy);
+                if slow { tokio::time::sleep(Duration::from_millis(5)).await; }
+            }
             if let Err(e) = router_bob
                 .handle_packet(&peer_id, packet.message_type, &packet.payload)
                 .await
@@ -147,16 +184,18 @@ async fn sends_a_file_over_the_wire_end_to_end() {
     // ── Send a real file ───────────────────────────────────────────────────
     let source = root.join("payload.bin");
     // ~350 KiB — spans multiple 64 KiB chunks.
-    let content: Vec<u8> = (0..350_000u32).map(|i| (i % 251) as u8).collect();
+    let content: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
     std::fs::write(&source, &content).expect("write source");
 
+    let started = std::time::Instant::now();
     let transfer_id = alice_files
         .send_file(&bob_identity.id, &source)
         .await
         .expect("send_file accepted");
+    let preparation = started.elapsed();
 
     // ── Wait for Bob to complete ───────────────────────────────────────────
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(if size > 10 * 1024 * 1024 { 120 } else { 10 });
     let mut final_status = None;
     while tokio::time::Instant::now() < deadline {
         if let Some(info) = bob_files.get(transfer_id).await {
@@ -164,19 +203,21 @@ async fn sends_a_file_over_the_wire_end_to_end() {
             if matches!(
                 info.status,
                 TransferStatus::Completed | TransferStatus::Verified | TransferStatus::Failed
-            ) {
+            ) && alice_files.get(transfer_id).await.is_some_and(|i| i.status == TransferStatus::Verified) {
                 break;
             }
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
+    let sender_info = alice_files.get(transfer_id).await.expect("sender info");
+    let receiver_info = bob_files.get(transfer_id).await;
     assert!(
         matches!(
             final_status,
             Some(TransferStatus::Completed) | Some(TransferStatus::Verified)
         ),
-        "expected completed/verified, got {final_status:?}"
+        "expected completed/verified; sender={sender_info:?} receiver={receiver_info:?}"
     );
 
     // The file arrived intact at its final name.
@@ -186,8 +227,11 @@ async fn sends_a_file_over_the_wire_end_to_end() {
     assert_eq!(received, content, "payload matches byte-for-byte");
 
     // Sender also reports it finished.
-    let sender_info = alice_files.get(transfer_id).await.expect("sender info");
     assert!(matches!(sender_info.status, TransferStatus::Verified));
+    let elapsed = started.elapsed();
+    eprintln!("FILE_BENCH encoding={} bytes={size} preparation_ms={} verified_ms={} throughput_mib_s={:.2}",
+        if legacy { "json" } else { "binary-v1" },
+        preparation.as_millis(), elapsed.as_millis(), size as f64 / (1024. * 1024.) / elapsed.as_secs_f64());
 
     shutdown.cancel();
     bob_router.abort();

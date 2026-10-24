@@ -195,6 +195,7 @@ async fn handshake_rejects_tampered_signature() {
         device_id: identity.id,
         device_name: identity.name,
         platform: "Desktop".to_string(),
+        file_chunk_binary: false,
         ed25519_public_key: key.public_key(),
         x25519_public_key: [0u8; 32],
         timestamp: 0,

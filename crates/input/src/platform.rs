@@ -44,6 +44,8 @@ impl std::fmt::Debug for EnigoInjector {
 
 impl EnigoInjector {
     pub fn new() -> Result<Self> {
+        #[cfg(windows)]
+        let _coordinates = crate::windows_cursor::PhysicalCoordinates::enter()?;
         let settings = enigo::Settings::default();
         let inner =
             enigo::Enigo::new(&settings).context("failed to init enigo input injector")?;
@@ -178,6 +180,8 @@ fn inject_mouse(enigo: &mut SendEnigo, event: MouseEvent) -> Result<()> {
 
 impl InputInjector for EnigoInjector {
     fn inject(&self, action: &InputAction) -> Result<()> {
+        #[cfg(windows)]
+        let _coordinates = crate::windows_cursor::PhysicalCoordinates::enter()?;
         let mut enigo = self
             .inner
             .lock()
