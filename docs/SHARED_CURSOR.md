@@ -26,6 +26,13 @@ when ownership ends or the connection expires. Local drags do not cross devices.
 
 Native capture requires **Privacy & Security → Accessibility** (called **Device
 Control and Data Access** on newer macOS versions). Enable UniKey there and retry.
+The packaged app runs a separate, content-addressed daemon. If capture still
+reports that permission is missing, also add the exact running
+`unikey-daemon-<hash>` executable from
+`~/Library/Application Support/UniKey/runtime/` to that permission panel.
+Verify its path against the running UniKey helper before granting access; do not
+grant access to unrelated executables. Quit and reopen UniKey after granting it.
+A new helper binary after an update may require its own permission grant.
 An unavailable OS backend is reported as unavailable, never simulated as working.
 Only Escape is inspected from the keyboard; keyboard contents are not forwarded.
 
@@ -53,3 +60,22 @@ the earlier local build. Distribution signing and notarization remain separate.
 - Physical Mac ↔ Dell cursor testing must be done with the updated build on both
   computers and the Mac permission granted. Packaging CI alone cannot verify feel,
   local cursor suppression, or cross-device physical movement.
+
+### Verified build checkpoint (2026-10-24)
+
+- Source commit `3866e63`: local Rust workspace tests, targeted input clippy,
+  Windows cross-compilation, frontend type-check/build, and desktop-shell tests
+  passed. Strict daemon clippy still reports an existing `collapsible_if` warning
+  in the pairing API handler; it was not reformatted as part of this feature.
+- The installed Mac app successfully started a real Quartz event tap with the
+  approved helper permission and reported a `1710 × 1112` main display. Receiving
+  was turned off again after that check. This is not a physical two-device test.
+- [Desktop CI run 40058169108](https://github.com/Harshit745/unikey/actions/runs/40058169108)
+  passed macOS packaging, Linux daemon integration, and Windows tests/packaging.
+  Windows installed the NSIS package, launched the packaged app and embedded
+  daemon, verified API readiness and graceful exit, then uninstalled it.
+- [Windows artifact: UniKey-Windows-x64](https://github.com/Harshit745/unikey/actions/runs/40058169108/artifacts/12546676146)
+  contains `UniKey-Setup.exe` and its checksum file. The downloaded EXE checksum
+  was independently verified:
+  `77c18f4b1d67fd29ed3f8b2da8acf491f35611bba3f111f63865a6a45b7ca5dc`.
+  CI artifacts expire and may require GitHub sign-in; this is not a published release.
